@@ -12,12 +12,24 @@ const conversation: StateAccessor = {
   },
 };
 
-export const getResponse = async (query: string) => {
+export const getResponse = async (
+  query: string,
+  onDelta?: (text: string) => void,
+) => {
   const response = callModel(openrouter, {
     model: "nvidia/nemotron-3-ultra-550b-a55b:free",
     input: query,
     state: conversation,
   });
 
-  return response.getText();
+  let text = "";
+
+  for await (const delta of response.getTextStream()) {
+    text += delta;
+    onDelta?.(text);
+  }
+
+  conversationState = await response.getState();
+
+  return text;
 };

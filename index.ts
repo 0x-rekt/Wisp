@@ -119,21 +119,32 @@ input.on(InputRenderableEvents.ENTER, async () => {
   input.value = "";
   input.blur();
   addMessage("You", query, "#9ecbff");
+  const historyBeforeResponse = conversation?.plainText ?? "";
   addMessage("Wisp", "Thinking…", "#a0a0a0");
 
+  let receivedDelta = false;
+
   try {
-    const answer = await getResponse(query);
-    if (conversation) {
-      conversation.content = conversation.plainText.replace("Wisp\nThinking…", "Wisp\n" + answer);
+    const answer = await getResponse(query, (partialText) => {
+      receivedDelta = true;
+
+      if (conversation) {
+        conversation.content = historyBeforeResponse + "\n\nWisp\n" + partialText;
+        conversation.fg = "#ffffff";
+      }
+    });
+
+    if (!receivedDelta && conversation) {
+      conversation.content = historyBeforeResponse + "\n\nWisp\n" + answer;
       conversation.fg = "#ffffff";
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     if (conversation) {
-      conversation.content = conversation.plainText.replace(
-        "Wisp\nThinking…",
-        "Wisp\nUnable to get a model response: " + message,
-      );
+      conversation.content =
+        historyBeforeResponse +
+        "\n\nWisp\nUnable to get a model response: " +
+        message;
       conversation.fg = "#ff8080";
     }
   } finally {
