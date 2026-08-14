@@ -299,3 +299,86 @@ export const listFiles = (rel: string, recursive = false) => {
 
   return { path: normalizePath(rel), files } as const;
 };
+
+export const searchFiles = (
+  rootRel: string,
+  globPattern: string,
+  query: string,
+  recursive = true,
+) => {
+  if (query.length === 0)
+    throw new Error("search_files: query cannot be empty");
+
+  checkNotExcluded(rootRel, "search_files");
+  const rootAbs = resolveSafe(rootRel);
+  if (!fs.existsSync(rootAbs))
+    throw new Error(`search_files: not found: ${rootRel}`);
+  if (!fs.statSync(rootAbs).isDirectory())
+    throw new Error(`search_files: not a directory: ${rootRel}`);
+
+  assertRealPathIsInWorkspace(rootAbs, rootRel);
+
+  const globToRegex = (pattern: string): RegExp => {
+    let source = "";
+    for (let index = 0; index < pattern.length; index++) {
+      const char = pattern[index];
+      if (char === "*") {
+        if (pattern[index + 1] === "*") {
+          source += ".*";
+          index++;
+        } else {
+          source += "[^/]*";
+        }
+      } else if (char === "?") {
+        source += "[^/]";
+      } else {
+        source += char?.replace(/[.+^${}()|[\\]\\]/g, "\\$&") ?? "";
+      }
+    }
+    return new RegExp(`^${source}$`, "i");
+  };
+
+  const matchesGlob =
+    globPattern === "**/*" ? /^.*$/i : globToRegex(globPattern);
+  const results: string[] = [];
+
+  const walk = (directory: string) => {
+    const entries = fs.readdirSync(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      const relPath = normalizePath(path.relative(process.cwd(), full));
+      if (excluded(relPath)) continue;
+
+      if (entry.isDirectory()) {
+        if (recursive) walk(full);
+        continue;
+      }
+
+      const searchPath = normalizePath(path.relative(rootAbs, full));
+      if (!matchesGlob.test(searchPath)) continue;
+
+      let content: string;
+      try {
+        content = fs.readFileSync(full, "utf-8");
+      } catch {
+        continue;
+      }
+      if (content.includes("\0")) continue;
+
+      const lines = content.split("\n");
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+        const line = lines[lineIndex] ?? "";
+        let offset = line.indexOf(query);
+        while (offset !== -1) {
+          results.push(`${relPath}:${lineIndex + 1}:${offset + 1}: ${line}`);
+          offset = line.indexOf(query, offset + query.length);
+        }
+      }
+    }
+  };
+
+  walk(rootAbs);
+  return results;
+};

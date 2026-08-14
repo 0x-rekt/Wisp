@@ -5,6 +5,7 @@ import {
   editFile,
   getFileContent,
   listFiles,
+  searchFiles,
   deleteFile,
 } from "./files";
 
@@ -60,6 +61,33 @@ const deleteFileTool = tool({
   execute: async (params) => { const { filepath } = params as { filepath: string }; return deleteFile(filepath); },
 });
 
+const searchCodeTool = tool({
+  name: "search_code",
+  description:
+    "Search text in workspace files using a glob pattern. Excluded files are omitted.",
+  inputSchema: z.object({
+    query: z.string().min(1),
+    filepath: filePathSchema.optional().default("."),
+    globPattern: z.string().min(1).optional().default("**/*"),
+    recursive: z.boolean().optional().default(true),
+  }),
+  outputSchema: z.array(z.string()),
+  execute: async (params) => {
+    const {
+      query,
+      filepath,
+      globPattern,
+      recursive,
+    } = params as {
+      query: string;
+      filepath: string;
+      globPattern: string;
+      recursive: boolean;
+    };
+    return searchFiles(filepath, globPattern, query, recursive);
+  },
+});
+
 const listFilesTool = tool({
   name: "list_files",
   description:
@@ -72,4 +100,11 @@ const listFilesTool = tool({
   execute: async (params) => { const { filepath, recursive } = params as { filepath: string; recursive: boolean }; return listFiles(filepath, recursive); },
 });
 
-export { readFileTool, writeFileTool, editFileTool, deleteFileTool, listFilesTool };
+export {
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  deleteFileTool,
+  listFilesTool,
+  searchCodeTool,
+};
