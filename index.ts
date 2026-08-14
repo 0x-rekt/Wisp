@@ -2,15 +2,18 @@ import { getResponse, resolvePendingToolCalls } from "./agent/client";
 import type { PendingToolCall } from "./agent/client";
 
 import {
-  ASCIIFontRenderable,
   BoxRenderable,
-  InputRenderable,
   InputRenderableEvents,
-  TextRenderable,
-  RGBA,
-  ScrollBoxRenderable,
   createCliRenderer,
 } from "@opentui/core";
+import { createChatHistory } from "./ui/chat-history";
+import { createHeader } from "./ui/header";
+import { createInputBar } from "./ui/input-bar";
+import { createMessageBlock } from "./ui/message-block";
+import type { MessageBlock } from "./ui/message-block";
+import type { MessageRole } from "./ui/theme";
+import { createStatusBar } from "./ui/status-bar";
+import { createWelcomeArea } from "./ui/welcome";
 
 const renderer = await createCliRenderer();
 
@@ -22,195 +25,34 @@ const screen = new BoxRenderable(renderer, {
   backgroundColor: "#1a1714",
 });
 
-const header = new BoxRenderable(renderer, {
-  id: "header",
-  width: "100%",
-  height: 1,
-  backgroundColor: "#252220",
-  paddingX: 2,
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-});
+const { header, divider: headerDivider } = createHeader(renderer);
+const welcomeArea = createWelcomeArea(renderer);
 
-const headerLeft = new TextRenderable(renderer, {
-  id: "header-left",
-  content: "  wisp",
-  fg: "#e8a87c",
-});
-
-const headerRight = new TextRenderable(renderer, {
-  id: "header-right",
-  content: "ctrl+c exit  ",
-  fg: "#5c5450",
-});
-
-header.add(headerLeft);
-header.add(headerRight);
-
-const headerDivider = new BoxRenderable(renderer, {
-  id: "header-divider",
-  width: "100%",
-  height: 1,
-  backgroundColor: "#2e2a27",
-});
-
-const welcomeArea = new BoxRenderable(renderer, {
-  id: "welcome-area",
-  width: "100%",
-  flexGrow: 1,
-  flexDirection: "column",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: 1,
-});
-
-const logo = new ASCIIFontRenderable(renderer, {
-  id: "logo",
-  text: "Wisp",
-  font: "shade",
-  color: RGBA.fromHex("#e8a87c"),
-});
-
-const tagline = new TextRenderable(renderer, {
-  id: "tagline",
-  content: "an ai coding agent",
-  fg: "#5c5450",
-});
-
-welcomeArea.add(logo);
-welcomeArea.add(tagline);
-
-let chatHistory: ScrollBoxRenderable | undefined;
+let chatHistory: ReturnType<typeof createChatHistory>;
+let chatVisible = false;
 
 const startChat = () => {
-  if (chatHistory) return;
+  if (chatVisible) return;
 
   welcomeArea.destroy();
 
-  chatHistory = new ScrollBoxRenderable(renderer, {
-    id: "chat-history",
-    width: "100%",
-    flexGrow: 1,
-    paddingX: 2,
-    paddingY: 1,
-    scrollY: true,
-    stickyScroll: true,
-    stickyStart: "bottom",
-    contentOptions: { flexDirection: "column", gap: 1 },
-  });
+  chatHistory = createChatHistory(renderer);
+  chatVisible = true;
 
   screen.insertBefore(chatHistory, inputDivider);
 };
 
-type MessageRole = "you" | "wisp" | "tool" | "approval" | "error";
-
-const roleStyles: Record<
-  MessageRole,
-  { label: string; labelColor: string; fg: string }
-> = {
-  you: { label: "you", labelColor: "#6ba3d6", fg: "#d4cfc9" },
-  wisp: { label: "wisp", labelColor: "#e8a87c", fg: "#d4cfc9" },
-  tool: { label: "tool", labelColor: "#7ec8a0", fg: "#8ab89a" },
-  approval: { label: "approve", labelColor: "#e8c87c", fg: "#c4b890" },
-  error: { label: "error", labelColor: "#c26b6b", fg: "#b08080" },
-};
-
-interface MessageBlock {
-  label: TextRenderable;
-  body: TextRenderable;
-  container: BoxRenderable;
-}
-
 const addBlock = (role: MessageRole, text: string): MessageBlock => {
   startChat();
 
-  const style = roleStyles[role];
-  const id = `${role}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const block = createMessageBlock(renderer, role, text);
+  chatHistory.add(block.container);
 
-  const container = new BoxRenderable(renderer, {
-    id: `ctr-${id}`,
-    width: "100%",
-    flexDirection: "column",
-    gap: 0,
-  });
-
-  const label = new TextRenderable(renderer, {
-    id: `lbl-${id}`,
-    content: style.label,
-    fg: style.labelColor,
-  });
-
-  const body = new TextRenderable(renderer, {
-    id: `bod-${id}`,
-    width: "100%",
-    content: text,
-    fg: style.fg,
-    wrapMode: "word",
-  });
-
-  container.add(label);
-  container.add(body);
-  chatHistory!.add(container);
-
-  return { label, body, container };
+  return block;
 };
 
-const inputDivider = new BoxRenderable(renderer, {
-  id: "input-divider",
-  width: "100%",
-  height: 1,
-  backgroundColor: "#2e2a27",
-});
-
-const inputArea = new BoxRenderable(renderer, {
-  id: "input-area",
-  width: "100%",
-  height: 3,
-  backgroundColor: "#1e1c19",
-  paddingX: 2,
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 1,
-});
-
-const inputPromptGlyph = new TextRenderable(renderer, {
-  id: "input-glyph",
-  content: ">",
-  fg: "#e8a87c",
-});
-
-const input = new InputRenderable(renderer, {
-  id: "prompt-input",
-  flexGrow: 1,
-  placeholder: "Ask wisp anything…",
-  textColor: "#d4cfc9",
-  backgroundColor: "#1e1c19",
-  focusedBackgroundColor: "#1e1c19",
-  placeholderColor: "#4a4540",
-  cursorColor: "#e8a87c",
-});
-
-inputArea.add(inputPromptGlyph);
-inputArea.add(input);
-
-const statusBar = new BoxRenderable(renderer, {
-  id: "status-bar",
-  width: "100%",
-  height: 1,
-  backgroundColor: "#141210",
-  paddingX: 2,
-  flexDirection: "row",
-  alignItems: "center",
-});
-
-const statusText = new TextRenderable(renderer, {
-  id: "status-text",
-  content: "ready",
-  fg: "#3d3935",
-});
-
-statusBar.add(statusText);
+const { inputDivider, inputArea, input } = createInputBar(renderer);
+const { statusBar, statusText } = createStatusBar(renderer);
 
 screen.add(header);
 screen.add(headerDivider);
