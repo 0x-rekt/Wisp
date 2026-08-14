@@ -8,6 +8,7 @@ import {
   searchFiles,
   deleteFile,
 } from "./files";
+import { runCommand } from "./commands";
 
 const filePathSchema = z
   .string()
@@ -61,6 +62,22 @@ const deleteFileTool = tool({
   execute: async (params) => { const { filepath } = params as { filepath: string }; return deleteFile(filepath); },
 });
 
+const runCommandTool = tool({
+  name: "run_command",
+  description:
+    "Run a non-destructive shell command in the workspace. Commands are approval-gated, time-limited, and output-limited.",
+  inputSchema: z.object({ command: z.string().min(1).max(2000) }),
+  outputSchema: z.object({
+    command: z.string(),
+    stdout: z.string(),
+    stderr: z.string(),
+    exitCode: z.number(),
+  }),
+  requireApproval: true,
+  execute: async (params) =>
+    runCommand((params as { command: string }).command),
+});
+
 const searchCodeTool = tool({
   name: "search_code",
   description:
@@ -107,4 +124,5 @@ export {
   deleteFileTool,
   listFilesTool,
   searchCodeTool,
+  runCommandTool,
 };

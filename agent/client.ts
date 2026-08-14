@@ -7,6 +7,7 @@ import {
   deleteFileTool,
   listFilesTool,
   searchCodeTool,
+  runCommandTool,
 } from "../tools/tools";
 
 const openrouter = new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
@@ -27,6 +28,7 @@ const tools = [
   deleteFileTool,
   listFilesTool,
   searchCodeTool,
+  runCommandTool,
 ] as const;
 
 export type PendingToolCall = {
