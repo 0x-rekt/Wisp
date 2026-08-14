@@ -1,6 +1,12 @@
 import { OpenRouter, callModel, stepCountIs } from "@openrouter/agent";
 import type { ConversationState, StateAccessor } from "@openrouter/agent";
-import { readFileTool, writeFileTool, editFileTool } from "../tools/tools";
+import {
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  deleteFileTool,
+  listFilesTool,
+} from "../tools/tools";
 
 const openrouter = new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 
@@ -13,7 +19,13 @@ const conversation: StateAccessor = {
   },
 };
 
-const tools = [readFileTool, writeFileTool, editFileTool] as const;
+const tools = [
+  readFileTool,
+  writeFileTool,
+  editFileTool,
+  deleteFileTool,
+  listFilesTool,
+] as const;
 
 export type PendingToolCall = {
   id: string;

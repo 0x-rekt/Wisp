@@ -253,3 +253,49 @@ export const editFile = (filePath: string, oldStr: string, newStr: string) => {
 
   return { path: normalizePath(filePath), content: newText } as const;
 };
+
+export const deleteFile = (filePath: string) => {
+  checkNotExcluded(filePath, "delete_file");
+  const abs = resolveSafe(filePath);
+
+  if (!fs.existsSync(abs)) throw new Error("File does not exist");
+
+  const realPath = assertRealPathIsInWorkspace(abs, filePath);
+  fs.unlinkSync(realPath);
+
+  return { path: normalizePath(filePath), deleted: true } as const;
+};
+
+export const listFiles = (rel: string, recursive = false) => {
+  checkNotExcluded(rel, "list_files");
+  const abs = resolveSafe(rel);
+  if (!fs.existsSync(abs)) throw new Error(`list_files: not found: ${rel}`);
+  if (!fs.statSync(abs).isDirectory())
+    throw new Error(`list_files: not a directory: ${rel}`);
+
+  assertRealPathIsInWorkspace(abs, rel);
+
+  const files: string[] = [];
+
+  const visit = (directory: string, prefix: string) => {
+    const entries = fs.readdirSync(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+
+    for (const entry of entries) {
+      const full = path.join(directory, entry.name);
+      const relp = path.relative(process.cwd(), full);
+
+      if (excluded(relp)) continue;
+      if (entry.isDirectory()) {
+        files.push(`${prefix}${entry.name}/`);
+        if (recursive) visit(full, `${prefix}${entry.name}/`);
+      } else {
+        files.push(`${prefix}${entry.name}`);
+      }
+    }
+  };
+
+  visit(abs, "");
+
+  return { path: normalizePath(rel), files } as const;
+};
