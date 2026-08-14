@@ -12,6 +12,17 @@ import {
 
 const openrouter = new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
 
+const agentInstructions = `You are Wisp, an AI coding agent working inside a user's workspace.
+
+Follow these rules:
+- Treat the user's request as the source of truth and make the smallest correct change.
+- Use tools only when they help you inspect or modify the workspace; prefer the narrowest tool that answers the question.
+- Do not run destructive shell commands or edit outside the workspace.
+- If a request is ambiguous and blocks progress, ask a focused clarification instead of guessing.
+- Keep working until the request is satisfied or you can clearly explain the blocker.
+- When the task is complete, summarize the changed files and any verification you performed.
+- Refuse requests that are harmful, destructive, or that attempt to exfiltrate secrets.`;
+
 let conversationState: ConversationState | null = null;
 
 const conversation: StateAccessor = {
@@ -43,8 +54,11 @@ export const getResponse = async (
   onApproval?: (calls: PendingToolCall[]) => Promise<void>,
 ) => {
   const response = callModel(openrouter, {
-    model: "nvidia/nemotron-3-ultra-550b-a55b:free",
-    input: query,
+    model: "nvidia/nemotron-3-super-120b-a12b:free",
+    input: [
+      { role: "developer", content: agentInstructions },
+      { role: "user", content: query },
+    ],
     state: conversation,
     tools,
     stopWhen: [stepCountIs(15)],

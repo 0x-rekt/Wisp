@@ -15,58 +15,91 @@ const filePathSchema = z
   .min(1)
   .describe("A path relative to the current workspace");
 
+const readFileInputSchema = z.object({ filepath: filePathSchema });
+type ReadFileInput = z.infer<typeof readFileInputSchema>;
+
+const writeFileInputSchema = z.object({
+  filepath: filePathSchema,
+  content: z.string(),
+});
+type WriteFileInput = z.infer<typeof writeFileInputSchema>;
+
+const editFileInputSchema = z.object({
+  filepath: filePathSchema,
+  oldStr: z.string(),
+  newStr: z.string(),
+});
+type EditFileInput = z.infer<typeof editFileInputSchema>;
+
+const deleteFileInputSchema = z.object({ filepath: filePathSchema });
+type DeleteFileInput = z.infer<typeof deleteFileInputSchema>;
+
+const runCommandInputSchema = z.object({ command: z.string().min(1).max(2000) });
+type RunCommandInput = z.infer<typeof runCommandInputSchema>;
+
+const searchCodeInputSchema = z.object({
+  query: z.string().min(1),
+  filepath: filePathSchema.optional().default("."),
+  globPattern: z.string().min(1).optional().default("**/*"),
+  recursive: z.boolean().optional().default(true),
+});
+type SearchCodeInput = z.infer<typeof searchCodeInputSchema>;
+
+const listFilesInputSchema = z.object({
+  filepath: filePathSchema,
+  recursive: z.boolean().optional().default(false),
+});
+type ListFilesInput = z.infer<typeof listFilesInputSchema>;
+
 const readFileTool = tool({
   name: "read_file",
   description:
     "Read a UTF-8 text file inside the workspace. Excluded files cannot be read.",
-  inputSchema: z.object({ filepath: filePathSchema }),
+  inputSchema: readFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
-  execute: async (params) => getFileContent((params as { filepath: string }).filepath),
+  execute: async (params: ReadFileInput) => getFileContent(params.filepath),
 });
 
 const writeFileTool = tool({
   name: "write_file",
   description:
     "Create a new file or overwrite an existing file with the given content.",
-  inputSchema: z.object({ filepath: filePathSchema, content: z.string() }),
+  inputSchema: writeFileInputSchema,
   outputSchema: z.object({
     path: z.string(),
     created: z.literal(true),
     content: z.string(),
   }),
   requireApproval: true,
-  execute: async (params) => { const { filepath, content } = params as { filepath: string; content: string }; return writeFile(filepath, content); },
+  execute: async (params: WriteFileInput) => writeFile(params.filepath, params.content),
 });
 
 const editFileTool = tool({
   name: "edit_file",
   description:
     "Edit a file using find-and-replace style replacement of oldStr with newStr.",
-  inputSchema: z.object({
-    filepath: filePathSchema,
-    oldStr: z.string(),
-    newStr: z.string(),
-  }),
+  inputSchema: editFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
   requireApproval: true,
-  execute: async (params) => { const { filepath, oldStr, newStr } = params as { filepath: string; oldStr: string; newStr: string }; return editFile(filepath, oldStr, newStr); },
+  execute: async (params: EditFileInput) =>
+    editFile(params.filepath, params.oldStr, params.newStr),
 });
 
 const deleteFileTool = tool({
   name: "delete_file",
   description:
     "Delete a file inside the workspace. Excluded files cannot be deleted.",
-  inputSchema: z.object({ filepath: filePathSchema }),
+  inputSchema: deleteFileInputSchema,
   outputSchema: z.object({ path: z.string(), deleted: z.literal(true) }),
   requireApproval: true,
-  execute: async (params) => { const { filepath } = params as { filepath: string }; return deleteFile(filepath); },
+  execute: async (params: DeleteFileInput) => deleteFile(params.filepath),
 });
 
 const runCommandTool = tool({
   name: "run_command",
   description:
-    "Run a non-destructive shell command in the workspace. Commands are approval-gated, time-limited, and output-limited.",
-  inputSchema: z.object({ command: z.string().min(1).max(2000) }),
+    "Run a non-destructive shell command in the workspace. Commands are approval-gated, time-limited, output-limited, and filtered by a heuristic denylist rather than a sandbox.",
+  inputSchema: runCommandInputSchema,
   outputSchema: z.object({
     command: z.string(),
     stdout: z.string(),
@@ -74,47 +107,26 @@ const runCommandTool = tool({
     exitCode: z.number(),
   }),
   requireApproval: true,
-  execute: async (params) =>
-    runCommand((params as { command: string }).command),
+  execute: async (params: RunCommandInput) => runCommand(params.command),
 });
 
 const searchCodeTool = tool({
   name: "search_code",
   description:
     "Search text in workspace files using a glob pattern. Excluded files are omitted.",
-  inputSchema: z.object({
-    query: z.string().min(1),
-    filepath: filePathSchema.optional().default("."),
-    globPattern: z.string().min(1).optional().default("**/*"),
-    recursive: z.boolean().optional().default(true),
-  }),
+  inputSchema: searchCodeInputSchema,
   outputSchema: z.array(z.string()),
-  execute: async (params) => {
-    const {
-      query,
-      filepath,
-      globPattern,
-      recursive,
-    } = params as {
-      query: string;
-      filepath: string;
-      globPattern: string;
-      recursive: boolean;
-    };
-    return searchFiles(filepath, globPattern, query, recursive);
-  },
+  execute: async (params: SearchCodeInput) =>
+    searchFiles(params.filepath, params.globPattern, params.query, params.recursive),
 });
 
 const listFilesTool = tool({
   name: "list_files",
   description:
     "List files inside a workspace directory, optionally recursively. Excluded files are omitted.",
-  inputSchema: z.object({
-    filepath: filePathSchema,
-    recursive: z.boolean().optional().default(false),
-  }),
+  inputSchema: listFilesInputSchema,
   outputSchema: z.object({ path: z.string(), files: z.array(z.string()) }),
-  execute: async (params) => { const { filepath, recursive } = params as { filepath: string; recursive: boolean }; return listFiles(filepath, recursive); },
+  execute: async (params: ListFilesInput) => listFiles(params.filepath, params.recursive),
 });
 
 export {

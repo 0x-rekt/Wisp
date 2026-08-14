@@ -215,10 +215,7 @@ export const writeFile = (filePath: string, content: string) => {
   const abs = resolveSafe(filePath);
 
   const parentDirectory = path.dirname(abs);
-
-  if (fs.existsSync(parentDirectory) === false) {
-    throw new Error("Parent directory does not exist");
-  }
+  fs.mkdirSync(parentDirectory, { recursive: true });
   assertRealPathIsInWorkspace(parentDirectory, filePath);
   fs.writeFileSync(abs, content, { encoding: "utf-8" });
 
@@ -244,6 +241,13 @@ export const editFile = (filePath: string, oldStr: string, newStr: string) => {
 
   const oldIndex = text.indexOf(oldStr);
   if (oldIndex === -1) throw new Error(`old string not found in ${filePath}`);
+
+  const occurrences = text.split(oldStr).length - 1;
+  if (occurrences > 1) {
+    throw new Error(
+      `old string occurs ${occurrences} times in ${filePath}; provide more surrounding context to disambiguate`,
+    );
+  }
 
   const newText =
     text.slice(0, oldIndex) + newStr + text.slice(oldIndex + oldStr.length);
