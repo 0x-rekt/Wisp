@@ -10,8 +10,17 @@ import {
   runCommandTool,
   webSearchTool,
 } from "../tools/tools";
+import { readConfig } from "../config";
 
-const openrouter = new OpenRouter({ apiKey: process.env.OPENROUTER_API_KEY });
+const getOpenRouterInstance = () => {
+  const currentConfig = readConfig();
+  const apiKey = currentConfig.openRouterApiKey ?? process.env.OPENROUTER_API_KEY;
+  return new OpenRouter({ apiKey });
+};
+
+export const getActiveModel = (): string => {
+  return readConfig().model;
+};
 
 const agentInstructions = `You are Wisp, an AI coding agent working inside a user's workspace.
 
@@ -55,8 +64,11 @@ export const getResponse = async (
   onDelta?: (text: string) => void,
   onApproval?: (calls: PendingToolCall[]) => Promise<void>,
 ) => {
+  const openrouter = getOpenRouterInstance();
+  const model = getActiveModel();
+
   const response = callModel(openrouter, {
-    model: "nvidia/nemotron-3-super-120b-a12b:free",
+    model,
     input: [
       { role: "developer", content: agentInstructions },
       { role: "user", content: query },
@@ -91,9 +103,12 @@ export const resolvePendingToolCalls = async (
   approve: boolean,
   onDelta?: (text: string) => void,
 ) => {
+  const openrouter = getOpenRouterInstance();
+  const model = getActiveModel();
+
   const pendingCalls = conversationState?.pendingToolCalls ?? [];
   const response = callModel(openrouter, {
-    model: "nvidia/nemotron-3-ultra-550b-a55b:free",
+    model,
     input: [],
     state: conversation,
     tools,

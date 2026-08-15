@@ -6,6 +6,7 @@ import {
   InputRenderableEvents,
   createCliRenderer,
 } from "@opentui/core";
+import { readConfig, updateConfig, getConfigPath } from "./config";
 import { createChatHistory } from "./ui/chat-history";
 import { createHeader } from "./ui/header";
 import { createInputBar } from "./ui/input-bar";
@@ -14,6 +15,7 @@ import type { MessageBlock } from "./ui/message-block";
 import type { MessageRole } from "./ui/theme";
 import { createStatusBar } from "./ui/status-bar";
 import { createWelcomeArea } from "./ui/welcome";
+import { createModelModal } from "./ui/model-modal";
 
 const renderer = await createCliRenderer();
 
@@ -52,7 +54,7 @@ const addBlock = (role: MessageRole, text: string): MessageBlock => {
 };
 
 const { inputDivider, inputArea, input } = createInputBar(renderer);
-const { statusBar, statusText } = createStatusBar(renderer);
+const { statusBar, statusText, updateModelDisplay } = createStatusBar(renderer);
 
 screen.add(header);
 screen.add(headerDivider);
@@ -67,6 +69,8 @@ let isRequestInFlight = false;
 let alwaysAllow = false;
 
 let approvalResolver: ((value: string) => void) | null = null;
+let authPromptState: "openrouter" | "tavily" | null = null;
+let tempOpenRouterKey: string | undefined = undefined;
 
 const setStatus = (text: string, color = "#3d3935") => {
   statusText.content = text;
@@ -86,6 +90,26 @@ const askApproval = (call: PendingToolCall): Promise<string> => {
   });
 };
 
+const openModelSelector = () => {
+  const modal = createModelModal(renderer, {
+    onSelect: (selectedModel) => {
+      modal.destroy();
+      renderer.root.remove(modal.overlay);
+      updateModelDisplay(selectedModel);
+      addBlock("system", `Active model set to: ${selectedModel}`);
+      input.focus();
+    },
+    onCancel: () => {
+      modal.destroy();
+      renderer.root.remove(modal.overlay);
+      input.focus();
+    },
+  });
+
+  renderer.root.add(modal.overlay);
+  modal.select.focus();
+};
+
 input.on(InputRenderableEvents.ENTER, async () => {
   if (approvalResolver) {
     const answer = input.value.trim().toLowerCase();
@@ -96,8 +120,87 @@ input.on(InputRenderableEvents.ENTER, async () => {
     resolver(answer || "n");
     return;
   }
+
+  if (authPromptState === "openrouter") {
+    tempOpenRouterKey = input.value.trim();
+    input.value = "";
+    authPromptState = "tavily";
+    input.placeholder = "Enter Tavily API key (or press enter to skip)…";
+    addBlock(
+      "system",
+      "OpenRouter API Key saved.\n\nNow enter your Tavily API Key for web search (optional):",
+    );
+    return;
+  }
+
+  if (authPromptState === "tavily") {
+    const tavilyKey = input.value.trim();
+    input.value = "";
+    authPromptState = null;
+    input.placeholder = "Ask wisp anything…";
+
+    const updates: Record<string, string> = {};
+    if (tempOpenRouterKey) updates.openRouterApiKey = tempOpenRouterKey;
+    if (tavilyKey) updates.tavilyApiKey = tavilyKey;
+
+    if (Object.keys(updates).length > 0) {
+      updateConfig(updates);
+      addBlock("system", `✓ API Key(s) saved to ${getConfigPath()}`);
+    } else {
+      addBlock("system", "No keys were entered. Config unchanged.");
+    }
+    tempOpenRouterKey = undefined;
+    return;
+  }
+
   const query = input.value.trim();
   if (!query || isRequestInFlight) return;
+
+  // Slash commands handling
+  if (query === "/model") {
+    input.value = "";
+    openModelSelector();
+    return;
+  }
+
+  if (query.startsWith("/model ")) {
+    input.value = "";
+    const modelName = query.slice(7).trim();
+    if (modelName) {
+      updateConfig({ model: modelName });
+      updateModelDisplay(modelName);
+      addBlock("system", `Active model set to: ${modelName}`);
+    } else {
+      openModelSelector();
+    }
+    return;
+  }
+
+  if (query === "/auth") {
+    input.value = "";
+    authPromptState = "openrouter";
+    startChat();
+    addBlock(
+      "system",
+      "🔑 API Key Configuration Flow\n\nEnter your OpenRouter API Key (sk-or-v1-...):",
+    );
+    input.placeholder = "Enter OpenRouter API key…";
+    return;
+  }
+
+  if (query === "/config") {
+    input.value = "";
+    startChat();
+    const config = readConfig();
+    addBlock(
+      "system",
+      `Config file: ${getConfigPath()}\n\n` +
+        `model: ${config.model}\n` +
+        `openRouterApiKey: ${config.openRouterApiKey ? "••••••••" : "(not set)"}\n` +
+        `tavilyApiKey: ${config.tavilyApiKey ? "••••••••" : "(not set)"}`,
+    );
+    return;
+  }
 
   startChat();
   isRequestInFlight = true;

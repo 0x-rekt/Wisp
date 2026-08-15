@@ -1,4 +1,4 @@
-export type MessageRole = "you" | "wisp" | "tool" | "approval" | "error";
+export type MessageRole = "you" | "wisp" | "tool" | "approval" | "error" | "system";
 
 export const roleStyles: Record<
   MessageRole,
@@ -9,4 +9,5 @@ export const roleStyles: Record<
   tool: { label: "tool", labelColor: "#7ec8a0", fg: "#8ab89a" },
   approval: { label: "approve", labelColor: "#e8c87c", fg: "#c4b890" },
   error: { label: "error", labelColor: "#c26b6b", fg: "#b08080" },
+  system: { label: "system", labelColor: "#9c8e85", fg: "#b8ada6" },
 };

@@ -1,6 +1,13 @@
-import { ASCIIFontRenderable, BoxRenderable, RGBA, TextRenderable } from "@opentui/core";
+import {
+  ASCIIFontRenderable,
+  BoxRenderable,
+  RGBA,
+  TextRenderable,
+} from "@opentui/core";
 
-export const createWelcomeArea = (renderer: ConstructorParameters<typeof BoxRenderable>[0]) => {
+export const createWelcomeArea = (
+  renderer: ConstructorParameters<typeof BoxRenderable>[0],
+) => {
   const welcomeArea = new BoxRenderable(renderer, {
     id: "welcome-area",
     width: "100%",
@@ -24,8 +31,15 @@ export const createWelcomeArea = (renderer: ConstructorParameters<typeof BoxRend
     fg: "#5c5450",
   });
 
+  const hints = new TextRenderable(renderer, {
+    id: "hints",
+    content: "slash commands: /model · /auth · /config",
+    fg: "#3d3935",
+  });
+
   welcomeArea.add(logo);
   welcomeArea.add(tagline);
+  welcomeArea.add(hints);
 
   return welcomeArea;
 };

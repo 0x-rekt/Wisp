@@ -1,6 +1,9 @@
 import { BoxRenderable, TextRenderable } from "@opentui/core";
+import { readConfig } from "../config";
 
-export const createStatusBar = (renderer: ConstructorParameters<typeof BoxRenderable>[0]) => {
+export const createStatusBar = (
+  renderer: ConstructorParameters<typeof BoxRenderable>[0],
+) => {
   const statusBar = new BoxRenderable(renderer, {
     id: "status-bar",
     width: "100%",
@@ -9,6 +12,7 @@ export const createStatusBar = (renderer: ConstructorParameters<typeof BoxRender
     paddingX: 2,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
   });
 
   const statusText = new TextRenderable(renderer, {
@@ -17,7 +21,19 @@ export const createStatusBar = (renderer: ConstructorParameters<typeof BoxRender
     fg: "#3d3935",
   });
 
-  statusBar.add(statusText);
+  const modelText = new TextRenderable(renderer, {
+    id: "model-text",
+    content: `model: ${readConfig().model}`,
+    fg: "#7d7871",
+  });
 
-  return { statusBar, statusText };
+  statusBar.add(statusText);
+  statusBar.add(modelText);
+
+  const updateModelDisplay = (modelName?: string) => {
+    const currentModel = modelName ?? readConfig().model;
+    modelText.content = `model: ${currentModel}`;
+  };
+
+  return { statusBar, statusText, modelText, updateModelDisplay };
 };
