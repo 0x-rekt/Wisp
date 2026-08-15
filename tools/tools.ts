@@ -9,6 +9,7 @@ import {
   deleteFile,
 } from "./files";
 import { runCommand } from "./commands";
+import { webSearch } from "./web";
 
 const filePathSchema = z
   .string()
@@ -34,7 +35,9 @@ type EditFileInput = z.infer<typeof editFileInputSchema>;
 const deleteFileInputSchema = z.object({ filepath: filePathSchema });
 type DeleteFileInput = z.infer<typeof deleteFileInputSchema>;
 
-const runCommandInputSchema = z.object({ command: z.string().min(1).max(2000) });
+const runCommandInputSchema = z.object({
+  command: z.string().min(1).max(2000),
+});
 type RunCommandInput = z.infer<typeof runCommandInputSchema>;
 
 const searchCodeInputSchema = z.object({
@@ -71,7 +74,8 @@ const writeFileTool = tool({
     content: z.string(),
   }),
   requireApproval: true,
-  execute: async (params: WriteFileInput) => writeFile(params.filepath, params.content),
+  execute: async (params: WriteFileInput) =>
+    writeFile(params.filepath, params.content),
 });
 
 const editFileTool = tool({
@@ -117,7 +121,12 @@ const searchCodeTool = tool({
   inputSchema: searchCodeInputSchema,
   outputSchema: z.array(z.string()),
   execute: async (params: SearchCodeInput) =>
-    searchFiles(params.filepath, params.globPattern, params.query, params.recursive),
+    searchFiles(
+      params.filepath,
+      params.globPattern,
+      params.query,
+      params.recursive,
+    ),
 });
 
 const listFilesTool = tool({
@@ -126,7 +135,34 @@ const listFilesTool = tool({
     "List files inside a workspace directory, optionally recursively. Excluded files are omitted.",
   inputSchema: listFilesInputSchema,
   outputSchema: z.object({ path: z.string(), files: z.array(z.string()) }),
-  execute: async (params: ListFilesInput) => listFiles(params.filepath, params.recursive),
+  execute: async (params: ListFilesInput) =>
+    listFiles(params.filepath, params.recursive),
+});
+
+const webSearchInputSchema = z.object({
+  query: z.string().trim().min(1).max(500),
+  maxResults: z.number().int().min(1).max(10).optional().default(5),
+});
+
+type WebSearchInput = z.infer<typeof webSearchInputSchema>;
+
+const webSearchTool = tool({
+  name: "web_search",
+  description:
+    "Search the public web for current information and return concise sources with URLs.",
+  inputSchema: webSearchInputSchema,
+  outputSchema: z.object({
+    query: z.string(),
+    results: z.array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        content: z.string(),
+      }),
+    ),
+  }),
+  execute: async (params: WebSearchInput) =>
+    webSearch(params.query, params.maxResults),
 });
 
 export {
@@ -137,4 +173,5 @@ export {
   listFilesTool,
   searchCodeTool,
   runCommandTool,
+  webSearchTool,
 };
