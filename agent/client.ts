@@ -11,6 +11,8 @@ import {
   webSearchTool,
 } from "../tools/tools";
 import { readConfig } from "../config";
+import { sessionManager } from "../session";
+import type { SessionToolCall } from "../session";
 
 const getOpenRouterInstance = () => {
   const currentConfig = readConfig();
@@ -59,11 +61,28 @@ export type PendingToolCall = {
   arguments: unknown;
 };
 
+export const setConversationState = (
+  state: ConversationState | null,
+): void => {
+  conversationState = state;
+};
+
+const recordToolCalls = (calls: PendingToolCall[]): void => {
+  for (const call of calls) {
+    sessionManager.appendToolCall({
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+    } satisfies SessionToolCall);
+  }
+};
+
 export const getResponse = async (
   query: string,
   onDelta?: (text: string) => void,
   onApproval?: (calls: PendingToolCall[]) => Promise<void>,
 ) => {
+  sessionManager.appendPrompt(query);
   const openrouter = getOpenRouterInstance();
   const model = getActiveModel();
 
@@ -86,6 +105,7 @@ export const getResponse = async (
   }
 
   conversationState = await response.getState();
+  sessionManager.setAgentState(conversationState);
 
   if (await response.requiresApproval()) {
     const pendingCalls = (await response.getPendingToolCalls()).map((call) => ({
@@ -93,6 +113,7 @@ export const getResponse = async (
       name: call.name,
       arguments: call.arguments,
     }));
+    recordToolCalls(pendingCalls);
     await onApproval?.(pendingCalls);
   }
 
@@ -107,6 +128,13 @@ export const resolvePendingToolCalls = async (
   const model = getActiveModel();
 
   const pendingCalls = conversationState?.pendingToolCalls ?? [];
+  recordToolCalls(
+    pendingCalls.map((call) => ({
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+    })),
+  );
   const response = callModel(openrouter, {
     model,
     input: [],
@@ -126,6 +154,7 @@ export const resolvePendingToolCalls = async (
   }
 
   conversationState = await response.getState();
+  sessionManager.setAgentState(conversationState);
 
   return text;
 };

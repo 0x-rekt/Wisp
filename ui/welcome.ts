@@ -33,7 +33,7 @@ export const createWelcomeArea = (
 
   const hints = new TextRenderable(renderer, {
     id: "hints",
-    content: "slash commands: /model · /auth · /config",
+    content: "slash commands: /model · /auth · /config · /sessions",
     fg: "#3d3935",
   });
 

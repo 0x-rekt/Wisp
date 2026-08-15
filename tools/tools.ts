@@ -10,6 +10,7 @@ import {
 } from "./files";
 import { runCommand } from "./commands";
 import { webSearch } from "./web";
+import { sessionManager } from "../session";
 
 const filePathSchema = z
   .string()
@@ -60,7 +61,16 @@ const readFileTool = tool({
     "Read a UTF-8 text file inside the workspace. Excluded files cannot be read.",
   inputSchema: readFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
-  execute: async (params: ReadFileInput) => getFileContent(params.filepath),
+  execute: async (params: ReadFileInput) => {
+    const result = getFileContent(params.filepath);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "read_file",
+      result,
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const writeFileTool = tool({
@@ -74,8 +84,17 @@ const writeFileTool = tool({
     content: z.string(),
   }),
   requireApproval: true,
-  execute: async (params: WriteFileInput) =>
-    writeFile(params.filepath, params.content),
+  execute: async (params: WriteFileInput) => {
+    const result = writeFile(params.filepath, params.content);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "write_file",
+      result,
+      changedFiles: [params.filepath],
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const editFileTool = tool({
@@ -85,8 +104,17 @@ const editFileTool = tool({
   inputSchema: editFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
   requireApproval: true,
-  execute: async (params: EditFileInput) =>
-    editFile(params.filepath, params.oldStr, params.newStr),
+  execute: async (params: EditFileInput) => {
+    const result = editFile(params.filepath, params.oldStr, params.newStr);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "edit_file",
+      result,
+      changedFiles: [params.filepath],
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const deleteFileTool = tool({
@@ -96,7 +124,17 @@ const deleteFileTool = tool({
   inputSchema: deleteFileInputSchema,
   outputSchema: z.object({ path: z.string(), deleted: z.literal(true) }),
   requireApproval: true,
-  execute: async (params: DeleteFileInput) => deleteFile(params.filepath),
+  execute: async (params: DeleteFileInput) => {
+    const result = deleteFile(params.filepath);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "delete_file",
+      result,
+      changedFiles: [params.filepath],
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const runCommandTool = tool({
@@ -111,7 +149,16 @@ const runCommandTool = tool({
     exitCode: z.number(),
   }),
   requireApproval: true,
-  execute: async (params: RunCommandInput) => runCommand(params.command),
+  execute: async (params: RunCommandInput) => {
+    const result = await runCommand(params.command);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "run_command",
+      result,
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const searchCodeTool = tool({
@@ -120,13 +167,21 @@ const searchCodeTool = tool({
     "Search text in workspace files using a glob pattern. Excluded files are omitted.",
   inputSchema: searchCodeInputSchema,
   outputSchema: z.array(z.string()),
-  execute: async (params: SearchCodeInput) =>
-    searchFiles(
+  execute: async (params: SearchCodeInput) => {
+    const result = searchFiles(
       params.filepath,
       params.globPattern,
       params.query,
       params.recursive,
-    ),
+    );
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "search_code",
+      result,
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const listFilesTool = tool({
@@ -135,8 +190,16 @@ const listFilesTool = tool({
     "List files inside a workspace directory, optionally recursively. Excluded files are omitted.",
   inputSchema: listFilesInputSchema,
   outputSchema: z.object({ path: z.string(), files: z.array(z.string()) }),
-  execute: async (params: ListFilesInput) =>
-    listFiles(params.filepath, params.recursive),
+  execute: async (params: ListFilesInput) => {
+    const result = listFiles(params.filepath, params.recursive);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "list_files",
+      result,
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 const webSearchInputSchema = z.object({
@@ -161,8 +224,16 @@ const webSearchTool = tool({
       }),
     ),
   }),
-  execute: async (params: WebSearchInput) =>
-    webSearch(params.query, params.maxResults),
+  execute: async (params: WebSearchInput) => {
+    const result = await webSearch(params.query, params.maxResults);
+    sessionManager.appendToolResult({
+      callId: "",
+      name: "web_search",
+      result,
+      completedAt: new Date().toISOString(),
+    });
+    return result;
+  },
 });
 
 export {

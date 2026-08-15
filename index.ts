@@ -1,4 +1,4 @@
-import { getResponse, resolvePendingToolCalls } from "./agent/client";
+import { getResponse, resolvePendingToolCalls, setConversationState } from "./agent/client";
 import type { PendingToolCall } from "./agent/client";
 
 import {
@@ -10,6 +10,7 @@ import {
   createCliRenderer,
 } from "@opentui/core";
 import { readConfig, updateConfig, getConfigPath } from "./config";
+import { sessionManager, loadSession, listSessions } from "./session";
 import { createChatHistory } from "./ui/chat-history";
 import { createHeader } from "./ui/header";
 import { createInputBar } from "./ui/input-bar";
@@ -19,10 +20,13 @@ import type { MessageRole } from "./ui/theme";
 import { createStatusBar } from "./ui/status-bar";
 import { createWelcomeArea } from "./ui/welcome";
 import { createModelModal } from "./ui/model-modal";
+import { createSessionModal } from "./ui/session-modal";
 import { formatApprovalPreview } from "./tools/format-approval";
 import type { ApprovalPreview } from "./tools/format-approval";
 
 const renderer = await createCliRenderer();
+
+sessionManager.start(readConfig().model);
 
 const screen = new BoxRenderable(renderer, {
   id: "screen",
@@ -46,6 +50,17 @@ const startChat = () => {
   chatHistory = createChatHistory(renderer);
   chatVisible = true;
 
+  screen.insertBefore(chatHistory, inputDivider);
+};
+
+const resetChatHistory = () => {
+  if (!chatVisible) {
+    startChat();
+    return;
+  }
+
+  chatHistory.destroy();
+  chatHistory = createChatHistory(renderer);
   screen.insertBefore(chatHistory, inputDivider);
 };
 
@@ -272,6 +287,76 @@ input.on(InputRenderableEvents.ENTER, async () => {
     return;
   }
 
+  if (query === "/sessions" || query === "/resume") {
+    input.value = "";
+    const sessions = listSessions();
+    if (sessions.length === 0) {
+      startChat();
+      addBlock("system", "No saved sessions found.");
+      return;
+    }
+
+    const modal = createSessionModal(renderer, sessions, {
+      onCopy: (session) => {
+        const copied = renderer.copyToClipboardOSC52(session.id);
+        modal.destroy();
+        renderer.root.remove(modal.overlay);
+        startChat();
+        addBlock(
+          "system",
+          copied
+            ? `Copied session id: ${session.id}. Paste it into /resume <id>.`
+            : `Clipboard unavailable. Session id: ${session.id}`,
+        );
+        input.focus();
+      },
+      onCancel: () => {
+        modal.destroy();
+        renderer.root.remove(modal.overlay);
+        input.focus();
+      },
+    });
+
+    renderer.root.add(modal.overlay);
+    modal.select.focus();
+    return;
+  }
+
+  if (query.startsWith("/resume ")) {
+    input.value = "";
+    const sessionId = query.slice(8).trim();
+    const session = loadSession(sessionId);
+    if (!session) {
+      startChat();
+      addBlock("system", `No session found with id: ${sessionId}`);
+      return;
+    }
+    resetChatHistory();
+    setConversationState(
+      (session.agentState ?? null) as Parameters<typeof setConversationState>[0],
+    );
+    if (session.model) {
+      updateConfig({ model: session.model });
+      updateModelDisplay(session.model);
+    }
+    addBlock("system", `Resumed session ${session.id}`);
+    for (const prompt of session.prompts) {
+      addBlock("you", prompt);
+    }
+    for (const response of session.responses) {
+      addBlock("wisp", response);
+    }
+    const changed = session.changedFiles;
+    if (changed.length > 0) {
+      addBlock(
+        "system",
+        `Previously changed files:\n${changed.map((f) => `  ${f}`).join("\n")}`,
+      );
+    }
+    sessionManager.resume(session);
+    return;
+  }
+
   startChat();
   isRequestInFlight = true;
   input.value = "";
@@ -293,6 +378,12 @@ input.on(InputRenderableEvents.ENTER, async () => {
       }
 
       const isApproved = approved === "y" || approved === "always";
+      sessionManager.appendApproval({
+        callId: call.id,
+        name: call.name,
+        approved: isApproved,
+        decidedAt: new Date().toISOString(),
+      });
       setStatus(
         isApproved ? "running tool…" : "rejected",
         isApproved ? "#7ec8a0" : "#c26b6b",
@@ -338,9 +429,11 @@ input.on(InputRenderableEvents.ENTER, async () => {
       wispBlock.body.fg = "#d4cfc9";
     }
 
+    sessionManager.markComplete(answer ?? "");
     setStatus("ready", "#3d3935");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
+    sessionManager.markError(message);
     wispBlock.body.content = `error: ${message}`;
     wispBlock.body.fg = "#c26b6b";
     wispBlock.label.fg = "#c26b6b";
