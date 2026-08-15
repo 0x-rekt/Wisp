@@ -83,7 +83,7 @@ const doesMatchPattern = (
     const regexStr =
       "^" + pattern.replace(/\./g, "\\.").replace(/\*/g, "(?:[^/]*)") + "$";
     const regex = new RegExp(regexStr);
-    if (regex.test(norm)) return !parsed.negate;
+    if (regex.test(norm)) return true;
   }
 
   if (doubleStar) {
@@ -95,25 +95,23 @@ const doesMatchPattern = (
         .replace(/\*/g, "(?:[^/]*)") +
       "$";
     const regex = new RegExp(regexStr);
-    if (regex.test(norm)) return !parsed.negate;
+    if (regex.test(norm)) return true;
   }
 
   if (pattern.includes("/")) {
     const patternParts = pattern.split("/");
-    const normParts = norm.split("/");
 
     if (patternParts.length === 1) {
-      if (norm === pattern || norm.startsWith(pattern + "/"))
-        return !parsed.negate;
+      if (norm === pattern || norm.startsWith(pattern + "/")) return true;
     } else if (patternParts[0] === "") {
-      if (norm.startsWith("/")) return !parsed.negate;
+      if (norm.startsWith("/")) return true;
     } else if (patternParts[patternParts.length - 1] === "") {
-      if (norm.endsWith("/")) return !parsed.negate;
+      if (norm.endsWith("/")) return true;
     }
     return false;
   }
 
-  if (norm === pattern || norm.startsWith(pattern + "/")) return !parsed.negate;
+  if (norm === pattern || norm.startsWith(pattern + "/")) return true;
   return false;
 };
 
@@ -128,29 +126,33 @@ const excluded = (filePath: string): boolean => {
     ...getAgentIgnorePatterns(),
   ];
 
+  let isExcluded = false;
+
   for (const pattern of patterns) {
     const parsed = parseGitignorePattern(pattern);
 
     if (parsed.isDirectory) {
-      if (norm === pattern || norm.startsWith(pattern + "/")) {
-        if (!parsed.negate) return true;
+      if (norm === parsed.pattern || norm.startsWith(parsed.pattern + "/")) {
+        isExcluded = !parsed.negate;
       }
       continue;
     }
 
     if (parsed.pattern === "*.log" && base?.endsWith(".log")) {
-      if (!parsed.negate) return true;
+      isExcluded = !parsed.negate;
+      continue;
     }
     if (parsed.pattern === ".env*" && base?.startsWith(".env")) {
-      if (!parsed.negate) return true;
+      isExcluded = !parsed.negate;
+      continue;
     }
 
     if (doesMatchPattern(norm, parsed)) {
-      if (!parsed.negate) return true;
+      isExcluded = !parsed.negate;
     }
   }
 
-  return false;
+  return isExcluded;
 };
 
 const checkNotExcluded = (filePath: string, operation: string): void => {
