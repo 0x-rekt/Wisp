@@ -1,4 +1,5 @@
 import { tavily } from "@tavily/core";
+import { readConfig } from "../config";
 
 const DEFAULT_MAX_RESULTS = 5;
 const MAX_RESULTS = 10;
@@ -23,15 +24,18 @@ export const webSearch = async (
   if (normalizedQuery.length === 0)
     throw new Error("web_search: query cannot be empty");
   if (normalizedQuery.length > MAX_QUERY_LENGTH)
+    throw new Error(`web_search: query exceeds ${MAX_QUERY_LENGTH} characters`);
+  if (
+    !Number.isInteger(maxResults) ||
+    maxResults < 1 ||
+    maxResults > MAX_RESULTS
+  )
     throw new Error(
-      `web_search: query exceeds ${MAX_QUERY_LENGTH} characters`,
+      `web_search: maxResults must be an integer from 1 to ${MAX_RESULTS}`,
     );
-  if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > MAX_RESULTS)
-    throw new Error(`web_search: maxResults must be an integer from 1 to ${MAX_RESULTS}`);
 
-  const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey)
-    throw new Error("web_search: TAVILY_API_KEY is not configured");
+  const apiKey = readConfig().tavilyApiKey ?? process.env.TAVILY_API_KEY;
+  if (!apiKey) throw new Error("web_search: TAVILY_API_KEY is not configured");
 
   try {
     const response = await tavily({ apiKey }).search(normalizedQuery, {
