@@ -3,7 +3,10 @@ import type { PendingToolCall } from "./agent/client";
 
 import {
   BoxRenderable,
+  DiffRenderable,
   InputRenderableEvents,
+  SyntaxStyle,
+  TextRenderable,
   createCliRenderer,
 } from "@opentui/core";
 import { readConfig, updateConfig, getConfigPath } from "./config";
@@ -16,6 +19,8 @@ import type { MessageRole } from "./ui/theme";
 import { createStatusBar } from "./ui/status-bar";
 import { createWelcomeArea } from "./ui/welcome";
 import { createModelModal } from "./ui/model-modal";
+import { formatApprovalPreview } from "./tools/format-approval";
+import type { ApprovalPreview } from "./tools/format-approval";
 
 const renderer = await createCliRenderer();
 
@@ -77,13 +82,79 @@ const setStatus = (text: string, color = "#3d3935") => {
   statusText.fg = color;
 };
 
+const diffSyntaxStyle = SyntaxStyle.fromStyles({
+  default: { fg: "#d4cfc9" },
+  keyword: { fg: "#e8a87c", bold: true },
+  string: { fg: "#7ec8a0" },
+  comment: { fg: "#6b6560" },
+  number: { fg: "#c8a0e8" },
+  type: { fg: "#6ba3d6" },
+});
+
+const addApprovalBlock = (preview: ApprovalPreview): void => {
+  startChat();
+
+  const id = `approval-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const container = new BoxRenderable(renderer, {
+    id: `ctr-${id}`,
+    width: "100%",
+    flexDirection: "column",
+    gap: 0,
+  });
+
+  const label = new TextRenderable(renderer, {
+    id: `lbl-${id}`,
+    content: "approve",
+    fg: "#e8c87c",
+  });
+  container.add(label);
+
+  const headerText = preview.kind === "diff" ? preview.header : preview.text;
+  const header = new TextRenderable(renderer, {
+    id: `hdr-${id}`,
+    width: "100%",
+    content: headerText,
+    fg: "#c4b890",
+    wrapMode: "word",
+  });
+  container.add(header);
+
+  if (preview.kind === "diff" && preview.diff) {
+    const diffWidget = new DiffRenderable(renderer, {
+      id: `diff-${id}`,
+      width: "100%",
+      diff: preview.diff,
+      view: "unified",
+      filetype: preview.filetype,
+      syntaxStyle: diffSyntaxStyle,
+      showLineNumbers: true,
+      wrapMode: "word",
+      addedBg: "#1a2e1a",
+      removedBg: "#2e1a1a",
+      contextBg: "#1a1714",
+      addedSignColor: "#7ec8a0",
+      removedSignColor: "#c26b6b",
+      lineNumberFg: "#6b6560",
+      lineNumberBg: "#1a1714",
+    });
+    container.add(diffWidget);
+  }
+
+  const prompt = new TextRenderable(renderer, {
+    id: `pmt-${id}`,
+    content: `\n${preview.prompt}  y · n · always`,
+    fg: "#c4b890",
+  });
+  container.add(prompt);
+
+  chatHistory.add(container);
+};
+
 const askApproval = (call: PendingToolCall): Promise<string> => {
   return new Promise((resolve) => {
-    const preview = JSON.stringify(call.arguments, null, 2);
-    addBlock(
-      "approval",
-      `${call.name}\n${preview}\n\ntype  y · n · always  then press enter`,
-    );
+    const preview = formatApprovalPreview(call.name, call.arguments);
+    addApprovalBlock(preview);
     input.placeholder = "y / n / always";
     approvalResolver = resolve;
     input.focus();
@@ -156,7 +227,6 @@ input.on(InputRenderableEvents.ENTER, async () => {
   const query = input.value.trim();
   if (!query || isRequestInFlight) return;
 
-  // Slash commands handling
   if (query === "/model") {
     input.value = "";
     openModelSelector();
