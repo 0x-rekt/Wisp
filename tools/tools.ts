@@ -10,6 +10,7 @@ import {
 } from "./files";
 import { runCommand } from "./commands";
 import { webSearch } from "./web";
+import { getProjectInfo } from "./project-info";
 import { sessionManager } from "../session";
 
 const filePathSchema = z
@@ -62,14 +63,27 @@ const readFileTool = tool({
   inputSchema: readFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
   execute: async (params, context?: { callId?: string }) => {
-    const result = getFileContent(params.filepath);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "read_file",
-      result,
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = getFileContent(params.filepath);
+      sessionManager.appendToolResult({
+        callId,
+        name: "read_file",
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "read_file",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`read_file: ${message}`);
+    }
   },
 });
 
@@ -85,15 +99,28 @@ const writeFileTool = tool({
   }),
   requireApproval: true,
   execute: async (params, context?: { callId?: string }) => {
-    const result = writeFile(params.filepath, params.content);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "write_file",
-      result,
-      changedFiles: [params.filepath],
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = writeFile(params.filepath, params.content);
+      sessionManager.appendToolResult({
+        callId,
+        name: "write_file",
+        result,
+        changedFiles: [params.filepath],
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "write_file",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`write_file: ${message}`);
+    }
   },
 });
 
@@ -105,15 +132,28 @@ const editFileTool = tool({
   outputSchema: z.object({ path: z.string(), content: z.string() }),
   requireApproval: true,
   execute: async (params, context?: { callId?: string }) => {
-    const result = editFile(params.filepath, params.oldStr, params.newStr);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "edit_file",
-      result,
-      changedFiles: [params.filepath],
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = editFile(params.filepath, params.oldStr, params.newStr);
+      sessionManager.appendToolResult({
+        callId,
+        name: "edit_file",
+        result,
+        changedFiles: [params.filepath],
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "edit_file",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`edit_file: ${message}`);
+    }
   },
 });
 
@@ -125,15 +165,28 @@ const deleteFileTool = tool({
   outputSchema: z.object({ path: z.string(), deleted: z.literal(true) }),
   requireApproval: true,
   execute: async (params, context?: { callId?: string }) => {
-    const result = deleteFile(params.filepath);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "delete_file",
-      result,
-      changedFiles: [params.filepath],
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = deleteFile(params.filepath);
+      sessionManager.appendToolResult({
+        callId,
+        name: "delete_file",
+        result,
+        changedFiles: [params.filepath],
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "delete_file",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`delete_file: ${message}`);
+    }
   },
 });
 
@@ -151,14 +204,27 @@ const runCommandTool = tool({
   }),
   requireApproval: true,
   execute: async (params, context?: { callId?: string }) => {
-    const result = await runCommand(params.command);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "run_command",
-      result,
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = await runCommand(params.command);
+      sessionManager.appendToolResult({
+        callId,
+        name: "run_command",
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "run_command",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`run_command: ${message}`);
+    }
   },
 });
 
@@ -169,19 +235,32 @@ const searchCodeTool = tool({
   inputSchema: searchCodeInputSchema,
   outputSchema: z.array(z.string()),
   execute: async (params, context?: { callId?: string }) => {
-    const result = searchFiles(
-      params.filepath,
-      params.globPattern,
-      params.query,
-      params.recursive,
-    );
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "search_code",
-      result,
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = searchFiles(
+        params.filepath,
+        params.globPattern,
+        params.query,
+        params.recursive,
+      );
+      sessionManager.appendToolResult({
+        callId,
+        name: "search_code",
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "search_code",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`search_code: ${message}`);
+    }
   },
 });
 
@@ -192,14 +271,27 @@ const listFilesTool = tool({
   inputSchema: listFilesInputSchema,
   outputSchema: z.object({ path: z.string(), files: z.array(z.string()) }),
   execute: async (params, context?: { callId?: string }) => {
-    const result = listFiles(params.filepath, params.recursive);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "list_files",
-      result,
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = listFiles(params.filepath, params.recursive);
+      sessionManager.appendToolResult({
+        callId,
+        name: "list_files",
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "list_files",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`list_files: ${message}`);
+    }
   },
 });
 
@@ -226,14 +318,67 @@ const webSearchTool = tool({
     ),
   }),
   execute: async (params, context?: { callId?: string }) => {
-    const result = await webSearch(params.query, params.maxResults);
-    sessionManager.appendToolResult({
-      callId: context?.callId ?? "",
-      name: "web_search",
-      result,
-      completedAt: new Date().toISOString(),
-    });
-    return result;
+    const callId = context?.callId ?? "";
+    try {
+      const result = await webSearch(params.query, params.maxResults);
+      sessionManager.appendToolResult({
+        callId,
+        name: "web_search",
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "web_search",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`web_search: ${message}`);
+    }
+  },
+});
+
+const projectInfoTool = tool({
+  name: "project_info",
+  description:
+    "Inspect the workspace root to discover the package manager, language, and the best commands to run for testing, type-checking, and linting. Call this before making code changes so you know exactly which verification commands to run afterward.",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    packageManager: z.enum(["bun", "npm", "yarn", "pnpm", "none"]),
+    scripts: z.record(z.string(), z.string()),
+    testCommand: z.string().nullable(),
+    buildCommand: z.string().nullable(),
+    lintCommand: z.string().nullable(),
+    language: z.enum(["typescript", "javascript", "python", "rust", "go", "other"]),
+    configFiles: z.array(z.string()),
+    hints: z.array(z.string()),
+  }),
+  execute: async (_params, context?: { callId?: string }) => {
+    const callId = context?.callId ?? "";
+    try {
+      const result = getProjectInfo();
+      sessionManager.appendToolResult({
+        callId,
+        name: "project_info",
+        result,
+        completedAt: new Date().toISOString(),
+      });
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionManager.appendToolResult({
+        callId,
+        name: "project_info",
+        result: null,
+        error: message,
+        completedAt: new Date().toISOString(),
+      });
+      throw new Error(`project_info: ${message}`);
+    }
   },
 });
 
@@ -246,4 +391,5 @@ export {
   searchCodeTool,
   runCommandTool,
   webSearchTool,
+  projectInfoTool,
 };

@@ -1,7 +1,4 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-
-const execAsync = promisify(exec);
+import { spawn } from "node:child_process";
 
 const MAX_COMMAND_LENGTH = 2_000;
 const COMMAND_TIMEOUT_MS = 15_000;
@@ -17,9 +14,12 @@ const BLOCKED_COMMAND_PATTERNS = [
 const checkCommandSafety = (command: string): void => {
   const trimmed = command.trim();
 
-  if (trimmed.length === 0) throw new Error("run_command: command cannot be empty");
+  if (trimmed.length === 0)
+    throw new Error("run_command: command cannot be empty");
   if (trimmed.length > MAX_COMMAND_LENGTH)
-    throw new Error(`run_command: command exceeds ${MAX_COMMAND_LENGTH} characters`);
+    throw new Error(
+      `run_command: command exceeds ${MAX_COMMAND_LENGTH} characters`,
+    );
 
   if (/(?:^|[;&|])\s*cd\s+\/[^\s;&|]*/i.test(trimmed)) {
     throw new Error(
@@ -46,33 +46,68 @@ export const runCommand = async (command: string): Promise<CommandResult> => {
   const trimmed = command.trim();
   checkCommandSafety(trimmed);
 
-  try {
-    const { stdout, stderr } = await execAsync(trimmed, {
+  return new Promise((resolve) => {
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let settled = false;
+
+    const child = spawn("bash", ["-c", trimmed], {
       cwd: process.cwd(),
-      encoding: "utf8",
-      timeout: COMMAND_TIMEOUT_MS,
-      maxBuffer: MAX_OUTPUT_BYTES,
+      env: process.env,
     });
 
-    return { command: trimmed, cwd: process.cwd(), stdout, stderr, exitCode: 0 };
-  } catch (error) {
-    const result = error as {
-      stdout?: string;
-      stderr?: string;
-      code?: number | string;
-      killed?: boolean;
+    const finish = (exitCode: number, timedOut = false) => {
+      if (settled) return;
+      settled = true;
+
+      const stdout = Buffer.concat(stdoutChunks).toString("utf8");
+      const rawStderr = Buffer.concat(stderrChunks).toString("utf8");
+      const stderr = timedOut
+        ? `${rawStderr}\n[run_command: timed out after ${COMMAND_TIMEOUT_MS / 1000}s – output above is partial]`.trimStart()
+        : rawStderr;
+
+      resolve({
+        command: trimmed,
+        cwd: process.cwd(),
+        stdout,
+        stderr,
+        exitCode: timedOut ? -1 : exitCode,
+      });
     };
 
-    if (result.killed) {
-      throw new Error(`run_command: command timed out after ${COMMAND_TIMEOUT_MS}ms`);
-    }
+    const timer = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(0, true);
+    }, COMMAND_TIMEOUT_MS);
 
-    return {
-      command: trimmed,
-      cwd: process.cwd(),
-      stdout: result.stdout ?? "",
-      stderr: result.stderr ?? "",
-      exitCode: typeof result.code === "number" ? result.code : 1,
-    };
-  }
+    child.stdout.on("data", (chunk: Buffer) => {
+      stdoutBytes += chunk.length;
+      if (stdoutBytes <= MAX_OUTPUT_BYTES) stdoutChunks.push(chunk);
+    });
+
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderrBytes += chunk.length;
+      if (stderrBytes <= MAX_OUTPUT_BYTES) stderrChunks.push(chunk);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      finish(code ?? 1);
+    });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      resolve({
+        command: trimmed,
+        cwd: process.cwd(),
+        stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        stderr: err.message,
+        exitCode: 1,
+      });
+    });
+  });
 };

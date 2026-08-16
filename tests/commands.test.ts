@@ -88,9 +88,11 @@ describe("run_command execution", () => {
 
 describe("run_command timeout", () => {
   it(
-    "times out a command that exceeds the limit",
+    "times out and returns partial output with exitCode -1",
     async () => {
-      await expect(runCommand("sleep 20")).rejects.toThrow(/timed out/);
+      const result = await runCommand("sleep 20");
+      expect(result.exitCode).toBe(-1);
+      expect(result.stderr).toMatch(/timed out/);
     },
     20000,
   );

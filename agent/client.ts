@@ -1,5 +1,6 @@
 import { OpenRouter, callModel, stepCountIs } from "@openrouter/agent";
 import type { ConversationState, StateAccessor } from "@openrouter/agent";
+import { classifyError } from "./errors";
 import {
   readFileTool,
   writeFileTool,
@@ -9,6 +10,7 @@ import {
   searchCodeTool,
   runCommandTool,
   webSearchTool,
+  projectInfoTool,
 } from "../tools/tools";
 import { readConfig } from "../config";
 import { sessionManager } from "../session";
@@ -18,7 +20,19 @@ import { boundConversationState } from "./context";
 const getOpenRouterInstance = () => {
   const currentConfig = readConfig();
   const apiKey = currentConfig.openRouterApiKey ?? process.env.OPENROUTER_API_KEY;
-  return new OpenRouter({ apiKey });
+  return new OpenRouter({
+    apiKey,
+    retryConfig: {
+      strategy: "backoff",
+      backoff: {
+        initialInterval: 500,
+        maxInterval: 30_000,
+        exponent: 1.5,
+        maxElapsedTime: 120_000,
+      },
+      retryConnectionErrors: true,
+    },
+  });
 };
 
 export const getActiveModel = (): string => {
@@ -38,9 +52,21 @@ Follow these rules:
 - Before creating or modifying UI/frontend code, inspect project dependencies (e.g. package.json) and existing component exports/APIs first. Verify exact import names, icon packages, and library API contracts instead of inventing signatures.
 - If a request is ambiguous and blocks progress, ask a focused clarification instead of guessing.
 - Keep working until the request is satisfied or you can clearly explain the blocker.
-- When the task is complete, summarize the changed files and any verification you performed.
 - Refuse requests that are harmful, destructive, or that attempt to exfiltrate secrets.
-- If edit_file reports that oldStr was not found, re-read the file and retry with a fresh exact snippet; never repeat the same stale edit arguments.`;
+- If edit_file reports that oldStr was not found, re-read the file and retry with a fresh exact snippet; never repeat the same stale edit arguments.
+
+VERIFICATION LOOP (mandatory for every code change):
+1. Discover: Before making code changes, call project_info to discover available build, type-check, test, and lint commands.
+2. Edit: Make the smallest correct change to the relevant files using write_file or edit_file.
+3. Verify: Run the project's check command (e.g., bun test, bunx tsc --noEmit, pytest, cargo check). Choose the narrowest scope that catches regressions.
+4. Inspect & Patch: If verification returns a non-zero exit code, carefully inspect stderr/output, locate the error root cause, fix the code/tests, and re-run verification.
+5. Done: Declare completion ONLY after all verification commands exit with code 0. Always summarize the changed files and the verification commands you ran along with their exit codes.
+
+Additional verification rules:
+- Never skip verification because an edit "looks correct".
+- Do not mask errors with '|| true' or 'exit 0'.
+- If no test command exists, run at least a type-check or syntax check appropriate for the language.
+- After fixing a test failure, re-run the affected test suite to ensure no regressions were introduced.`;
 
 let conversationState: ConversationState | null = null;
 
@@ -60,6 +86,7 @@ const tools = [
   searchCodeTool,
   runCommandTool,
   webSearchTool,
+  projectInfoTool,
 ] as const;
 
 export type PendingToolCall = {
@@ -93,38 +120,42 @@ export const getResponse = async (
   const openrouter = getOpenRouterInstance();
   const model = getActiveModel();
 
-  const response = callModel(openrouter, {
-    model,
-    input: [
-      { role: "developer", content: agentInstructions },
-      { role: "user", content: query },
-    ],
-    state: conversation,
-    tools,
-    stopWhen: [stepCountIs(15)],
-  });
+  try {
+    const response = callModel(openrouter, {
+      model,
+      input: [
+        { role: "developer", content: agentInstructions },
+        { role: "user", content: query },
+      ],
+      state: conversation,
+      tools,
+      stopWhen: [stepCountIs(15)],
+    });
 
-  let text = "";
+    let text = "";
 
-  for await (const delta of response.getTextStream()) {
-    text += delta;
-    onDelta?.(text);
+    for await (const delta of response.getTextStream()) {
+      text += delta;
+      onDelta?.(text);
+    }
+
+    conversationState = boundConversationState(await response.getState());
+    sessionManager.setAgentState(conversationState);
+
+    if (await response.requiresApproval()) {
+      const pendingCalls = (await response.getPendingToolCalls()).map((call) => ({
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+      }));
+      recordToolCalls(pendingCalls);
+      await onApproval?.(pendingCalls);
+    }
+
+    return text;
+  } catch (error) {
+    throw classifyError(error);
   }
-
-  conversationState = boundConversationState(await response.getState());
-  sessionManager.setAgentState(conversationState);
-
-  if (await response.requiresApproval()) {
-    const pendingCalls = (await response.getPendingToolCalls()).map((call) => ({
-      id: call.id,
-      name: call.name,
-      arguments: call.arguments,
-    }));
-    recordToolCalls(pendingCalls);
-    await onApproval?.(pendingCalls);
-  }
-
-  return text;
 };
 
 export const resolvePendingToolCalls = async (
@@ -135,37 +166,41 @@ export const resolvePendingToolCalls = async (
   const openrouter = getOpenRouterInstance();
   const model = getActiveModel();
 
-  const pendingCalls = conversationState?.pendingToolCalls ?? [];
-  const response = callModel(openrouter, {
-    model,
-    input: [],
-    state: conversation,
-    tools,
-    stopWhen: [stepCountIs(15)],
-    ...(approve
-      ? { approveToolCalls: pendingCalls.map((call) => call.id) }
-      : { rejectToolCalls: pendingCalls.map((call) => call.id) }),
-  });
+  try {
+    const pendingCalls = conversationState?.pendingToolCalls ?? [];
+    const response = callModel(openrouter, {
+      model,
+      input: [],
+      state: conversation,
+      tools,
+      stopWhen: [stepCountIs(15)],
+      ...(approve
+        ? { approveToolCalls: pendingCalls.map((call) => call.id) }
+        : { rejectToolCalls: pendingCalls.map((call) => call.id) }),
+    });
 
-  let text = "";
+    let text = "";
 
-  for await (const delta of response.getTextStream()) {
-    text += delta;
-    onDelta?.(text);
+    for await (const delta of response.getTextStream()) {
+      text += delta;
+      onDelta?.(text);
+    }
+
+    conversationState = boundConversationState(await response.getState());
+    sessionManager.setAgentState(conversationState);
+
+    if (await response.requiresApproval()) {
+      const nextPendingCalls = (await response.getPendingToolCalls()).map((call) => ({
+        id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+      }));
+      recordToolCalls(nextPendingCalls);
+      await onApproval?.(nextPendingCalls);
+    }
+
+    return text;
+  } catch (error) {
+    throw classifyError(error);
   }
-
-  conversationState = boundConversationState(await response.getState());
-  sessionManager.setAgentState(conversationState);
-
-  if (await response.requiresApproval()) {
-    const nextPendingCalls = (await response.getPendingToolCalls()).map((call) => ({
-      id: call.id,
-      name: call.name,
-      arguments: call.arguments,
-    }));
-    recordToolCalls(nextPendingCalls);
-    await onApproval?.(nextPendingCalls);
-  }
-
-  return text;
 };
