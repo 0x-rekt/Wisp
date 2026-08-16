@@ -240,19 +240,31 @@ export const editFile = (filePath: string, oldStr: string, newStr: string) => {
 
   const realPath = assertRealPathIsInWorkspace(abs, filePath);
   const text = fs.readFileSync(realPath, "utf-8");
+  const normalizedText = text.replace(/\r\n/g, "\n");
+  const normalizedOldStr = oldStr.replace(/\r\n/g, "\n");
 
-  const oldIndex = text.indexOf(oldStr);
-  if (oldIndex === -1) throw new Error(`old string not found in ${filePath}`);
+  const exactIndex = text.indexOf(oldStr);
+  const normalizedIndex =
+    exactIndex === -1 ? normalizedText.indexOf(normalizedOldStr) : -1;
+  const oldIndex = exactIndex !== -1 ? exactIndex : normalizedIndex;
 
-  const occurrences = text.split(oldStr).length - 1;
+  if (oldIndex === -1) {
+    throw new Error(
+      `old string not found in ${filePath}; the file may have changed. Re-read the file and retry with an exact current snippet.`,
+    );
+  }
+
+  const match = exactIndex !== -1 ? oldStr : normalizedOldStr;
+  const occurrences = (exactIndex !== -1 ? text : normalizedText).split(match).length - 1;
   if (occurrences > 1) {
     throw new Error(
       `old string occurs ${occurrences} times in ${filePath}; provide more surrounding context to disambiguate`,
     );
   }
 
+  const sourceText = exactIndex !== -1 ? text : normalizedText;
   const newText =
-    text.slice(0, oldIndex) + newStr + text.slice(oldIndex + oldStr.length);
+    sourceText.slice(0, oldIndex) + newStr + sourceText.slice(oldIndex + match.length);
 
   assertRealPathIsInWorkspace(abs, filePath);
   fs.writeFileSync(realPath, newText, "utf-8");

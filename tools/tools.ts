@@ -61,10 +61,10 @@ const readFileTool = tool({
     "Read a UTF-8 text file inside the workspace. Excluded files cannot be read.",
   inputSchema: readFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
-  execute: async (params: ReadFileInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = getFileContent(params.filepath);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "read_file",
       result,
       completedAt: new Date().toISOString(),
@@ -84,10 +84,10 @@ const writeFileTool = tool({
     content: z.string(),
   }),
   requireApproval: true,
-  execute: async (params: WriteFileInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = writeFile(params.filepath, params.content);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "write_file",
       result,
       changedFiles: [params.filepath],
@@ -104,10 +104,10 @@ const editFileTool = tool({
   inputSchema: editFileInputSchema,
   outputSchema: z.object({ path: z.string(), content: z.string() }),
   requireApproval: true,
-  execute: async (params: EditFileInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = editFile(params.filepath, params.oldStr, params.newStr);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "edit_file",
       result,
       changedFiles: [params.filepath],
@@ -124,10 +124,10 @@ const deleteFileTool = tool({
   inputSchema: deleteFileInputSchema,
   outputSchema: z.object({ path: z.string(), deleted: z.literal(true) }),
   requireApproval: true,
-  execute: async (params: DeleteFileInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = deleteFile(params.filepath);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "delete_file",
       result,
       changedFiles: [params.filepath],
@@ -140,19 +140,20 @@ const deleteFileTool = tool({
 const runCommandTool = tool({
   name: "run_command",
   description:
-    "Run a non-destructive shell command in the workspace. Commands are approval-gated, time-limited, output-limited, and filtered by a heuristic denylist rather than a sandbox.",
+    "Run a non-destructive shell command from the current workspace directory. Use relative paths; do not assume /app or /workspace. Commands are approval-gated, time-limited, output-limited, and filtered by a heuristic denylist rather than a sandbox.",
   inputSchema: runCommandInputSchema,
   outputSchema: z.object({
     command: z.string(),
+    cwd: z.string(),
     stdout: z.string(),
     stderr: z.string(),
     exitCode: z.number(),
   }),
   requireApproval: true,
-  execute: async (params: RunCommandInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = await runCommand(params.command);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "run_command",
       result,
       completedAt: new Date().toISOString(),
@@ -167,7 +168,7 @@ const searchCodeTool = tool({
     "Search text in workspace files using a glob pattern. Excluded files are omitted.",
   inputSchema: searchCodeInputSchema,
   outputSchema: z.array(z.string()),
-  execute: async (params: SearchCodeInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = searchFiles(
       params.filepath,
       params.globPattern,
@@ -175,7 +176,7 @@ const searchCodeTool = tool({
       params.recursive,
     );
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "search_code",
       result,
       completedAt: new Date().toISOString(),
@@ -190,10 +191,10 @@ const listFilesTool = tool({
     "List files inside a workspace directory, optionally recursively. Excluded files are omitted.",
   inputSchema: listFilesInputSchema,
   outputSchema: z.object({ path: z.string(), files: z.array(z.string()) }),
-  execute: async (params: ListFilesInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = listFiles(params.filepath, params.recursive);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "list_files",
       result,
       completedAt: new Date().toISOString(),
@@ -224,10 +225,10 @@ const webSearchTool = tool({
       }),
     ),
   }),
-  execute: async (params: WebSearchInput) => {
+  execute: async (params, context?: { callId?: string }) => {
     const result = await webSearch(params.query, params.maxResults);
     sessionManager.appendToolResult({
-      callId: "",
+      callId: context?.callId ?? "",
       name: "web_search",
       result,
       completedAt: new Date().toISOString(),

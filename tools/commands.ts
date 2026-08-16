@@ -21,6 +21,12 @@ const checkCommandSafety = (command: string): void => {
   if (trimmed.length > MAX_COMMAND_LENGTH)
     throw new Error(`run_command: command exceeds ${MAX_COMMAND_LENGTH} characters`);
 
+  if (/(?:^|[;&|])\s*cd\s+\/[^\s;&|]*/i.test(trimmed)) {
+    throw new Error(
+      `run_command: commands already start in ${process.cwd()}; remove the absolute cd prefix`,
+    );
+  }
+
   for (const pattern of BLOCKED_COMMAND_PATTERNS) {
     if (pattern.test(trimmed)) {
       throw new Error("run_command: potentially destructive command blocked");
@@ -30,6 +36,7 @@ const checkCommandSafety = (command: string): void => {
 
 export type CommandResult = {
   command: string;
+  cwd: string;
   stdout: string;
   stderr: string;
   exitCode: number;
@@ -47,7 +54,7 @@ export const runCommand = async (command: string): Promise<CommandResult> => {
       maxBuffer: MAX_OUTPUT_BYTES,
     });
 
-    return { command: trimmed, stdout, stderr, exitCode: 0 };
+    return { command: trimmed, cwd: process.cwd(), stdout, stderr, exitCode: 0 };
   } catch (error) {
     const result = error as {
       stdout?: string;
@@ -62,6 +69,7 @@ export const runCommand = async (command: string): Promise<CommandResult> => {
 
     return {
       command: trimmed,
+      cwd: process.cwd(),
       stdout: result.stdout ?? "",
       stderr: result.stderr ?? "",
       exitCode: typeof result.code === "number" ? result.code : 1,

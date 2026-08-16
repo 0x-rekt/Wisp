@@ -400,6 +400,7 @@ input.on(InputRenderableEvents.ENTER, async () => {
           wispBlock.body.content = partialText;
           wispBlock.body.fg = "#d4cfc9";
         },
+        handleApproval,
       );
 
       toolBlock.body.content = isApproved

@@ -144,6 +144,16 @@ describe("SessionManager", () => {
     expect(manager.current?.error).toBe("something failed");
   });
 
+  it("keeps a session active while approval calls are pending", () => {
+    const manager = new SessionManager();
+    manager.start("test-model");
+    manager.setAgentState({ pendingToolCalls: [{ id: "call-1" }] });
+    manager.markComplete("should not complete yet");
+
+    expect(manager.current?.status).toBe("active");
+    expect(manager.current?.responses).toEqual([]);
+  });
+
   it("stores agent state for resume", () => {
     const manager = new SessionManager();
     manager.start("model/a");

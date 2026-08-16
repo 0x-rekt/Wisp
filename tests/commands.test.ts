@@ -17,6 +17,12 @@ afterAll(() => {
 });
 
 describe("run_command denylist", () => {
+  it("rejects absolute workspace assumptions", async () => {
+    await expect(runCommand("cd /workspace && npx tsc --noEmit")).rejects.toThrow(
+      "remove the absolute cd prefix",
+    );
+  });
+
   const blocked: string[] = [
     "rm -rf .",
     "sudo apt-get update",
@@ -51,6 +57,7 @@ describe("run_command execution", () => {
   it("runs a simple command successfully", async () => {
     const result = await runCommand("echo hello");
     expect(result.exitCode).toBe(0);
+    expect(result.cwd).toBe(ws);
     expect(result.stdout).toContain("hello");
   });
 

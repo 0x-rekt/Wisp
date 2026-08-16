@@ -145,6 +145,13 @@ export class SessionManager {
 
   markComplete(response: string): void {
     if (!this.data) return;
+    const agentState = this.data.agentState as {
+      pendingToolCalls?: unknown[];
+    } | undefined;
+    if (agentState?.pendingToolCalls && agentState.pendingToolCalls.length > 0) {
+      this.touch();
+      return;
+    }
     this.data.responses.push(response);
     this.data.status = "complete";
     this.touch();
