@@ -10,7 +10,8 @@ import {
   createCliRenderer,
 } from "@opentui/core";
 import { readConfig, updateConfig, getConfigPath } from "./config";
-import { sessionManager, loadSession, listSessions } from "./session";
+import { sessionManager, loadSession, listSessions, recoverInterruptedSessions } from "./session";
+import { logger } from "./telemetry/logger";
 import { createChatHistory } from "./ui/chat-history";
 import { createHeader } from "./ui/header";
 import { createInputBar } from "./ui/input-bar";
@@ -24,9 +25,32 @@ import { createSessionModal } from "./ui/session-modal";
 import { formatApprovalPreview } from "./tools/format-approval";
 import type { ApprovalPreview } from "./tools/format-approval";
 
+// ── Process Crash Shields ────────────────────────────────────────────────
+process.on("uncaughtException", (error) => {
+  logger.error("uncaughtException", error);
+  try {
+    sessionManager.markError(error instanceof Error ? error.message : String(error));
+  } catch {
+    // ignore
+  }
+});
+
+process.on("unhandledRejection", (reason) => {
+  logger.error("unhandledRejection", reason);
+  try {
+    sessionManager.markError(reason instanceof Error ? reason.message : String(reason));
+  } catch {
+    // ignore
+  }
+});
+
 const renderer = await createCliRenderer();
 
-sessionManager.start(readConfig().model);
+const currentSession = sessionManager.start(readConfig().model);
+const interrupted = recoverInterruptedSessions().filter((s) => s.id !== currentSession.id);
+if (interrupted.length > 0) {
+  logger.info("interrupted_sessions_detected", { count: interrupted.length });
+}
 
 const screen = new BoxRenderable(renderer, {
   id: "screen",

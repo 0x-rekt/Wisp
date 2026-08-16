@@ -21,13 +21,13 @@ export const createWelcomeArea = (
   const logo = new ASCIIFontRenderable(renderer, {
     id: "logo",
     text: "Wisp",
-    font: "shade",
+    font: "block",
     color: RGBA.fromHex("#e8a87c"),
   });
 
   const tagline = new TextRenderable(renderer, {
     id: "tagline",
-    content: "an ai coding agent",
+    content: "Wisp will get the work done",
     fg: "#5c5450",
   });
 

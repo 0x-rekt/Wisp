@@ -16,6 +16,7 @@ import { readConfig } from "../config";
 import { sessionManager } from "../session";
 import type { SessionToolCall } from "../session";
 import { boundConversationState } from "./context";
+import { shouldRequireApproval } from "../tools/tools";
 
 const getOpenRouterInstance = () => {
   const currentConfig = readConfig();
@@ -89,6 +90,9 @@ const tools = [
   projectInfoTool,
 ] as const;
 
+const requiresApproval = (toolCall: { name: string }): boolean =>
+  shouldRequireApproval(toolCall.name, readConfig().permissionMode ?? "always-ask");
+
 export type PendingToolCall = {
   id: string;
   name: string;
@@ -129,6 +133,7 @@ export const getResponse = async (
       ],
       state: conversation,
       tools,
+      requireApproval: requiresApproval,
       stopWhen: [stepCountIs(15)],
     });
 
@@ -173,6 +178,7 @@ export const resolvePendingToolCalls = async (
       input: [],
       state: conversation,
       tools,
+      requireApproval: requiresApproval,
       stopWhen: [stepCountIs(15)],
       ...(approve
         ? { approveToolCalls: pendingCalls.map((call) => call.id) }

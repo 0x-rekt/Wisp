@@ -60,4 +60,20 @@ describe("project_info tool", () => {
     expect(info.testCommand).toBe("cargo test");
     expect(info.buildCommand).toBe("cargo check");
   });
+
+  it("detects repository awareness: entry points, key directories, and active ignore files", () => {
+    writeWorkspaceFile(ws, "index.ts", "console.log('hi');");
+    writeWorkspaceFile(ws, "src/app.ts", "export const app = 1;");
+    writeWorkspaceFile(ws, "tests/app.test.ts", "test();");
+    writeWorkspaceFile(ws, ".gitignore", "node_modules/\n");
+    writeWorkspaceFile(ws, ".wispignore", "secret.txt\n");
+
+    const info = getProjectInfo();
+    expect(info.entryPoints).toContain("index.ts");
+    expect(info.keyDirectories).toContain("src/");
+    expect(info.keyDirectories).toContain("tests/");
+    expect(info.activeIgnoreFiles).toContain(".gitignore");
+    expect(info.activeIgnoreFiles).toContain(".wispignore");
+    expect(info.git.isGitRepo).toBe(false);
+  });
 });

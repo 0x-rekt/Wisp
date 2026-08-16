@@ -140,6 +140,26 @@ describe("ignore rules", () => {
     );
   });
 
+  it("honours custom patterns in .wispignore and .ignore", () => {
+    fs.writeFileSync(path.join(ws, ".wispignore"), "wisp-secret.txt\n", "utf-8");
+    fs.writeFileSync(path.join(ws, ".ignore"), "dot-secret.txt\n", "utf-8");
+    writeWorkspaceFile(ws, "wisp-secret.txt", "hidden1");
+    writeWorkspaceFile(ws, "dot-secret.txt", "hidden2");
+    expect(() => getFileContent("wisp-secret.txt")).toThrow(/excluded file/);
+    expect(() => getFileContent("dot-secret.txt")).toThrow(/excluded file/);
+  });
+
+  it("supports pattern filtering in listFiles", () => {
+    writeWorkspaceFile(ws, "src/index.ts", "content");
+    writeWorkspaceFile(ws, "src/style.css", "content");
+    writeWorkspaceFile(ws, "src/readme.md", "content");
+
+    const result = listFiles("src", true, "*.ts");
+    expect(result.files).toContain("index.ts");
+    expect(result.files.includes("style.css")).toBe(false);
+    expect(result.files.includes("readme.md")).toBe(false);
+  });
+
   it("allows directories listed in gitignoreExcludePatterns to be traversed", () => {
     const result = listFiles(".", true);
     expect(result.files.length).toBeGreaterThan(0);

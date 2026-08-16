@@ -4,11 +4,36 @@ const MAX_COMMAND_LENGTH = 2_000;
 const COMMAND_TIMEOUT_MS = 15_000;
 const MAX_OUTPUT_BYTES = 1_000_000;
 
+const SENSITIVE_ENV_VARS = [
+  "OPENROUTER_API_KEY",
+  "TAVILY_API_KEY",
+  "WISP_CONFIG_DIR",
+  "AWS_ACCESS_KEY_ID",
+  "AWS_SECRET_ACCESS_KEY",
+  "GITHUB_TOKEN",
+  "GH_TOKEN",
+  "SSH_AUTH_SOCK",
+  "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
+];
+
+export const getSanitizedEnv = (): Record<string, string | undefined> => {
+  const env = { ...process.env };
+  for (const key of SENSITIVE_ENV_VARS) {
+    delete env[key];
+  }
+  return env;
+};
+
 const BLOCKED_COMMAND_PATTERNS = [
   /(?:^|[\s;&|()])(?:(?:\/[\w.-]+)+\/|(?:[\w.-]+\/)+)?(?:sudo|su|doas|rm|rmdir|mkfs(?:\.[\w-]+)?|fdisk|parted|dd)(?:[\s;&|()]|$)/i,
-  /(?:^|[\s;&|()])(?:shutdown|reboot|poweroff|halt)(?:[\s;&|()]|$)/i,
+  /(?:^|[\s;&|()])(?:shutdown|reboot|poweroff|halt|systemctl|service)(?:[\s;&|()]|$)/i,
   /(?:^|[\s;&|()])git[\s]+.*\b(?:push[\s]+.*(?:--force|-f)|reset[\s]+.*--hard|clean[\s]+-[^\s]*f|checkout[\s]+--|restore[\s]+--)/i,
   /(?:^|[\s;&|()])(?:(?:\/[\w.-]+)+\/|(?:[\w.-]+\/)+)?(?:curl|wget)[^\n]*[|][^\n]*(?:sh|bash|zsh|fish)(?:[\s;&|()]|$)/i,
+  /(?:^|[\s;&|()])(?:nc|netcat|socat)[\s]+.*-[a-z]*l/i,
+  /\/dev\/(?:mem|kmem|sd[a-z]|nvme)/i,
+  /:\s*\(\s*\)\s*{\s*:\s*\|\s*:\s*&\s*}\s*;?\s*:/,
+  /(?:^|[\s;&|()])(?:nohup|disown)(?:[\s;&|()]|$)/i,
 ];
 
 const checkCommandSafety = (command: string): void => {
@@ -55,7 +80,7 @@ export const runCommand = async (command: string): Promise<CommandResult> => {
 
     const child = spawn("bash", ["-c", trimmed], {
       cwd: process.cwd(),
-      env: process.env,
+      env: getSanitizedEnv(),
     });
 
     const finish = (exitCode: number, timedOut = false) => {

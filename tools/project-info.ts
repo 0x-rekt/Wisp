@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 
 export type PackageManager = "bun" | "npm" | "yarn" | "pnpm" | "none";
 export type Language =
@@ -9,6 +10,13 @@ export type Language =
   | "rust"
   | "go"
   | "other";
+
+export type GitInfo = {
+  isGitRepo: boolean;
+  branch: string | null;
+  isClean: boolean | null;
+  uncommittedCount: number;
+};
 
 export type ProjectInfo = {
   /** The package manager detected from lock files. */
@@ -25,6 +33,14 @@ export type ProjectInfo = {
   language: Language;
   /** Relevant config files found in the workspace root. */
   configFiles: string[];
+  /** Git repository status details. */
+  git: GitInfo;
+  /** Detected workspace entry point files. */
+  entryPoints: string[];
+  /** Primary top-level directories in the workspace. */
+  keyDirectories: string[];
+  /** Active ignore rules files in the workspace root. */
+  activeIgnoreFiles: string[];
   /** Human-readable suggestions the agent should act on. */
   hints: string[];
 };
@@ -52,12 +68,44 @@ const pickScript = (
   return null;
 };
 
+/** Safely inspect Git status without throwing errors. */
+const getGitInfo = (): GitInfo => {
+  const isGitRepo = exists(".git");
+  if (!isGitRepo) {
+    return { isGitRepo: false, branch: null, isClean: null, uncommittedCount: 0 };
+  }
+
+  try {
+    const branch = execSync("git branch --show-current", {
+      cwd: cwd(),
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    const statusOutput = execSync("git status --porcelain", {
+      cwd: cwd(),
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+
+    const lines = statusOutput ? statusOutput.split("\n").filter(Boolean) : [];
+    const uncommittedCount = lines.length;
+    const isClean = uncommittedCount === 0;
+
+    return {
+      isGitRepo: true,
+      branch: branch || "HEAD",
+      isClean,
+      uncommittedCount,
+    };
+  } catch {
+    return { isGitRepo: true, branch: null, isClean: null, uncommittedCount: 0 };
+  }
+};
+
 /**
  * Inspect the current workspace root and return structured information about
- * how to build, test, and lint the project.
- *
- * This is intentionally synchronous and cheap — it only reads a small number
- * of well-known config files; it does not walk the directory tree.
+ * how to build, test, and lint the project, as well as repository awareness.
  */
 export const getProjectInfo = (): ProjectInfo => {
   const configFiles: string[] = [];
@@ -196,7 +244,71 @@ export const getProjectInfo = (): ProjectInfo => {
     }
   }
 
+  // ── Repository awareness: Entry points & Key directories ───────────────
+  const candidateEntries = [
+    "index.ts",
+    "src/index.ts",
+    "main.ts",
+    "src/main.ts",
+    "app.ts",
+    "src/app.ts",
+    "index.js",
+    "src/index.js",
+    "main.py",
+    "src/main.py",
+    "src/main.rs",
+    "src/lib.rs",
+    "cmd/main.go",
+    "App.tsx",
+    "src/App.tsx",
+    "README.md",
+    "package.json",
+  ];
+  const entryPoints = candidateEntries.filter((file) => exists(file));
+
+  const candidateDirs = [
+    "src",
+    "tests",
+    "test",
+    "lib",
+    "components",
+    "tools",
+    "agent",
+    "session",
+    "ui",
+    "docs",
+    "config",
+    "bin",
+  ];
+  const keyDirectories: string[] = [];
+  for (const dir of candidateDirs) {
+    if (exists(dir)) {
+      try {
+        if (fs.statSync(path.join(cwd(), dir)).isDirectory()) {
+          keyDirectories.push(`${dir}/`);
+        }
+      } catch {
+        // ignore errors
+      }
+    }
+  }
+
+  const activeIgnoreFiles = [
+    ".gitignore",
+    ".wispignore",
+    ".agentignore",
+    ".ignore",
+  ].filter((file) => exists(file));
+
+  const git = getGitInfo();
+
   // ── Build hints ────────────────────────────────────────────────────────
+  if (git.isGitRepo) {
+    hints.push(
+      `Git repo on branch '${git.branch ?? "HEAD"}' (${git.isClean ? "clean" : `${git.uncommittedCount} uncommitted change(s)`}).`,
+    );
+  }
+
   if (testCommand) {
     hints.push(`Run '${testCommand}' to execute the test suite.`);
   } else {
@@ -229,6 +341,10 @@ export const getProjectInfo = (): ProjectInfo => {
     lintCommand,
     language,
     configFiles,
+    git,
+    entryPoints,
+    keyDirectories,
+    activeIgnoreFiles,
     hints,
   };
 };

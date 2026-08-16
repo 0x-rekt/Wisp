@@ -13,6 +13,9 @@ import { webSearch } from "./web";
 import { getProjectInfo } from "./project-info";
 import { sessionManager } from "../session";
 
+const isVerificationCommand = (command: string): boolean =>
+  /(?:\btsc\s+--noEmit\b|\b(?:bun|npm|npx|pnpm|yarn)\s+(?:run\s+)?(?:test|lint|build|typecheck|type-check|check|verify|compile)\b|\bpytest\b|\bcargo\s+(?:test|check|build)\b|\bgo\s+(?:test|build)\b)/i.test(command);
+
 const filePathSchema = z
   .string()
   .min(1)
@@ -53,6 +56,7 @@ type SearchCodeInput = z.infer<typeof searchCodeInputSchema>;
 const listFilesInputSchema = z.object({
   filepath: filePathSchema,
   recursive: z.boolean().optional().default(false),
+  pattern: z.string().optional(),
 });
 type ListFilesInput = z.infer<typeof listFilesInputSchema>;
 
@@ -109,6 +113,7 @@ const writeFileTool = tool({
         changedFiles: [params.filepath],
         completedAt: new Date().toISOString(),
       });
+      sessionManager.requireVerification();
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -142,6 +147,7 @@ const editFileTool = tool({
         changedFiles: [params.filepath],
         completedAt: new Date().toISOString(),
       });
+      sessionManager.requireVerification();
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -175,6 +181,7 @@ const deleteFileTool = tool({
         changedFiles: [params.filepath],
         completedAt: new Date().toISOString(),
       });
+      sessionManager.requireVerification();
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -213,6 +220,9 @@ const runCommandTool = tool({
         result,
         completedAt: new Date().toISOString(),
       });
+      if (isVerificationCommand(params.command)) {
+        sessionManager.recordVerification(params.command, result.exitCode === 0);
+      }
       return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -269,11 +279,15 @@ const listFilesTool = tool({
   description:
     "List files inside a workspace directory, optionally recursively. Excluded files are omitted.",
   inputSchema: listFilesInputSchema,
-  outputSchema: z.object({ path: z.string(), files: z.array(z.string()) }),
+  outputSchema: z.object({
+    path: z.string(),
+    files: z.array(z.string()),
+    pattern: z.string().optional(),
+  }),
   execute: async (params, context?: { callId?: string }) => {
     const callId = context?.callId ?? "";
     try {
-      const result = listFiles(params.filepath, params.recursive);
+      const result = listFiles(params.filepath, params.recursive, params.pattern);
       sessionManager.appendToolResult({
         callId,
         name: "list_files",
@@ -355,6 +369,15 @@ const projectInfoTool = tool({
     lintCommand: z.string().nullable(),
     language: z.enum(["typescript", "javascript", "python", "rust", "go", "other"]),
     configFiles: z.array(z.string()),
+    git: z.object({
+      isGitRepo: z.boolean(),
+      branch: z.string().nullable(),
+      isClean: z.boolean().nullable(),
+      uncommittedCount: z.number(),
+    }),
+    entryPoints: z.array(z.string()),
+    keyDirectories: z.array(z.string()),
+    activeIgnoreFiles: z.array(z.string()),
     hints: z.array(z.string()),
   }),
   execute: async (_params, context?: { callId?: string }) => {
@@ -381,6 +404,31 @@ const projectInfoTool = tool({
     }
   },
 });
+
+export type ToolCategory = "read" | "write" | "destructive";
+
+export const getToolCategory = (toolName: string): ToolCategory => {
+  if (toolName === "delete_file" || toolName === "run_command") {
+    return "destructive";
+  }
+  if (toolName === "write_file" || toolName === "edit_file") {
+    return "write";
+  }
+  return "read";
+};
+
+export const shouldRequireApproval = (
+  toolName: string,
+  mode: "always-ask" | "ask-write" | "ask-destructive" | "never-ask" = "always-ask",
+): boolean => {
+  if (mode === "never-ask") return false;
+  const category = getToolCategory(toolName);
+  if (mode === "ask-destructive") return category === "destructive";
+  if (mode === "ask-write" || mode === "always-ask") {
+    return category === "write" || category === "destructive";
+  }
+  return true;
+};
 
 export {
   readFileTool,

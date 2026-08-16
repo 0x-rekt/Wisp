@@ -154,6 +154,22 @@ describe("SessionManager", () => {
     expect(manager.current?.responses).toEqual([]);
   });
 
+  it("keeps a session active until verification passes", () => {
+    const manager = new SessionManager();
+    manager.start("test-model");
+    manager.requireVerification();
+    manager.markComplete("should not complete yet");
+
+    expect(manager.current?.status).toBe("active");
+    expect(manager.current?.responses).toEqual([]);
+
+    manager.recordVerification("bun test", true);
+    manager.markComplete("verified");
+
+    expect(manager.current?.status).toBe("complete");
+    expect(manager.current?.responses).toEqual(["verified"]);
+  });
+
   it("stores agent state for resume", () => {
     const manager = new SessionManager();
     manager.start("model/a");

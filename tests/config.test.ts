@@ -39,7 +39,7 @@ describe("config persistence", () => {
     const raw = fs.readFileSync(getConfigPath(), "utf-8");
     const parsed = JSON.parse(raw);
     expect(parsed.model).toBe("model/a");
-    expect(parsed).toEqual({ model: "model/a" });
+    expect(parsed).toEqual({ model: "model/a", permissionMode: "always-ask" });
   });
 
   it("getConfigDir honours WISP_CONFIG_DIR env var", () => {

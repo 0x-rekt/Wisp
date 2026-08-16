@@ -2,14 +2,22 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 
+export type PermissionMode =
+  | "always-ask"
+  | "ask-write"
+  | "ask-destructive"
+  | "never-ask";
+
 export type WispConfig = {
   model: string;
   openRouterApiKey?: string;
   tavilyApiKey?: string;
+  permissionMode?: PermissionMode;
 };
 
 export const DEFAULT_CONFIG: WispConfig = {
   model: "nvidia/nemotron-3-super-120b-a12b:free",
+  permissionMode: "always-ask",
 };
 
 export function getConfigDir(): string {

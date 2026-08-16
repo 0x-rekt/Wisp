@@ -13,31 +13,27 @@ const gitignoreExcludePatterns = [
   "dist",
   "build",
   ".next",
+  "coverage",
+  ".cache",
+  ".DS_Store",
+  ".env*",
+  "*.log",
 ];
 
-const getAgentIgnorePatterns = (): string[] => {
-  const agentIgnorePath = path.join(process.cwd(), ".agentignore");
-
-  if (fs.existsSync(agentIgnorePath) === false) return [];
-
+const getIgnoreFilePatterns = (filename: string): string[] => {
+  const ignorePath = path.join(process.cwd(), filename);
+  if (!fs.existsSync(ignorePath)) return [];
   return fs
-    .readFileSync(agentIgnorePath, "utf-8")
+    .readFileSync(ignorePath, "utf-8")
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.length > 0 && line.startsWith("#") === false);
+    .filter((line) => line.length > 0 && !line.startsWith("#"));
 };
 
-const getGitIgnorePatterns = (): string[] => {
-  const gitignorePath = path.join(process.cwd(), ".gitignore");
-
-  if (fs.existsSync(gitignorePath) === false) return [];
-
-  return fs
-    .readFileSync(gitignorePath, "utf-8")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && line.startsWith("#") === false);
-};
+const getGitIgnorePatterns = (): string[] => getIgnoreFilePatterns(".gitignore");
+const getAgentIgnorePatterns = (): string[] => getIgnoreFilePatterns(".agentignore");
+const getWispIgnorePatterns = (): string[] => getIgnoreFilePatterns(".wispignore");
+const getDotIgnorePatterns = (): string[] => getIgnoreFilePatterns(".ignore");
 
 const parseGitignorePattern = (pattern: string) => {
   const negate = pattern.startsWith("!");
@@ -124,6 +120,8 @@ const excluded = (filePath: string): boolean => {
     ...gitignoreExcludePatterns,
     ...getGitIgnorePatterns(),
     ...getAgentIgnorePatterns(),
+    ...getWispIgnorePatterns(),
+    ...getDotIgnorePatterns(),
   ];
 
   let isExcluded = false;
@@ -154,6 +152,8 @@ const excluded = (filePath: string): boolean => {
 
   return isExcluded;
 };
+
+export const isExcluded = (filePath: string): boolean => excluded(filePath);
 
 const checkNotExcluded = (filePath: string, operation: string): void => {
   if (excluded(filePath))
@@ -284,7 +284,7 @@ export const deleteFile = (filePath: string) => {
   return { path: normalizePath(filePath), deleted: true } as const;
 };
 
-export const listFiles = (rel: string, recursive = false) => {
+export const listFiles = (rel: string, recursive = false, pattern?: string) => {
   checkNotExcluded(rel, "list_files");
   const abs = resolveSafe(rel);
   if (!fs.existsSync(abs)) throw new Error(`list_files: not found: ${rel}`);
@@ -293,6 +293,27 @@ export const listFiles = (rel: string, recursive = false) => {
 
   assertRealPathIsInWorkspace(abs, rel);
 
+  const globToRegex = (pat: string): RegExp => {
+    let source = "";
+    for (let i = 0; i < pat.length; i++) {
+      const char = pat[i];
+      if (char === "*") {
+        if (pat[i + 1] === "*") {
+          source += ".*";
+          i++;
+        } else {
+          source += "[^/]*";
+        }
+      } else if (char === "?") {
+        source += "[^/]";
+      } else {
+        source += char?.replace(/[.+^${}()|[\]\\]/g, "\\$&") ?? "";
+      }
+    }
+    return new RegExp(`^${source}$`, "i");
+  };
+
+  const matcher = pattern && pattern !== "**/*" ? globToRegex(pattern) : null;
   const files: string[] = [];
 
   const visit = (directory: string, prefix: string) => {
@@ -305,17 +326,22 @@ export const listFiles = (rel: string, recursive = false) => {
 
       if (excluded(relp)) continue;
       if (entry.isDirectory()) {
-        files.push(`${prefix}${entry.name}/`);
+        if (!matcher) {
+          files.push(`${prefix}${entry.name}/`);
+        }
         if (recursive) visit(full, `${prefix}${entry.name}/`);
       } else {
-        files.push(`${prefix}${entry.name}`);
+        const itemPath = `${prefix}${entry.name}`;
+        if (!matcher || matcher.test(entry.name) || matcher.test(itemPath)) {
+          files.push(itemPath);
+        }
       }
     }
   };
 
   visit(abs, "");
 
-  return { path: normalizePath(rel), files } as const;
+  return { path: normalizePath(rel), files, pattern: pattern ?? undefined } as const;
 };
 
 export const searchFiles = (
